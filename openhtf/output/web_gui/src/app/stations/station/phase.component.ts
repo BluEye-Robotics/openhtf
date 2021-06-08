@@ -20,6 +20,10 @@ export class PhaseComponent {
   PhaseStatus = PhaseStatus;
 
   get showMeasurements() {
-    return this.expand && this.phase.measurements.length > 0;
+    return (
+      (this.expand && this.phase.measurements.length > 0) ||
+      this.phase.status == PhaseStatus.fail ||
+      this.phase.status == PhaseStatus.running
+    );
   }
 }
