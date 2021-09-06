@@ -30,6 +30,11 @@ a:visited {
   @include htf-link-styling;
 }
 
+img {
+  border-style: none;
+  width: 100%; 
+}
+
 input[type='text'] {
   border-radius: 3px;
   border: 1px solid darken($border-light-grey, 10%);
