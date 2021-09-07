@@ -293,9 +293,9 @@ input[type='text'] {
 
 .htf-layout-widget-body {
   padding: 15px; }
-  .htf-layout-widget-body .img {
+  .htf-layout-widget-body img {
     width: 100%;
-    padding-bottom: 20px; }
+    margin-bottom: 15px; }
   .htf-layout-widget-body + .htf-layout-widget-body {
     border-top: 1px solid #ccc; }
 
@@ -755,4 +755,4 @@ template {
 .u-text-color-error {
   color: #ff5d4e; }
 
-/*# sourceMappingURL=app.77fa697a9c36e05572f0.css.map*/
+/*# sourceMappingURL=app.d574564a241d7a52038d.css.map*/
