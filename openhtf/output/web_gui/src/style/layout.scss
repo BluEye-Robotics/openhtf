@@ -86,9 +86,9 @@
 
 .htf-layout-widget-body {
   padding: $widget-inner-padding;
-  & .img {
+  & img {
     width: 100%;
-    padding-bottom: 20px;
+    margin-bottom: 15px;
   }
   + .htf-layout-widget-body {
     border-top: 1px solid $border-grey;
