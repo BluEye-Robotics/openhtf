@@ -21,6 +21,7 @@ import copy
 import difflib
 import enum
 import itertools
+import inspect
 import logging
 import math
 import numbers
@@ -168,7 +169,7 @@ def convert_to_base_types(obj,
 
   if hasattr(obj, 'as_base_types'):
     return obj.as_base_types()
-  if hasattr(obj, '_asdict'):
+  if hasattr(obj, '_asdict') and not inspect.isclass(obj):
     obj = obj._asdict()
   elif isinstance(obj, records.RecordClass):
     new_obj = {}
