@@ -3,10 +3,10 @@
 # OpenHTF
 The open-source hardware testing framework.
 
-[![Build Status](https://travis-ci.org/google/openhtf.svg?branch=master)](https://travis-ci.org/google/openhtf)
+[![Build Status](https://github.com/google/openhtf/actions/workflows/build_and_deploy.yml/badge.svg?branch=master)](https://github.com/google/openhtf/actions?branch=master)
 [![Coverage Status](https://coveralls.io/repos/google/openhtf/badge.svg?branch=master&service=github)](https://coveralls.io/github/google/openhtf?branch=master)
-
-[Issue Stats](http://issuestats.com/github/google/openhtf)
+[![Percentage of issues still open](http://isitmaintained.com/badge/open/google/openhtf.svg)](http://isitmaintained.com/project/google/openhtf "Percentage of issues still open")
+[![Average time to resolve an issue](http://isitmaintained.com/badge/resolution/google/openhtf.svg)](http://isitmaintained.com/project/google/openhtf "Average time to resolve an issue")
 
 ## Overview
 OpenHTF is a Python library that provides a set of convenient abstractions
@@ -40,11 +40,8 @@ If you want to install from source instead (for example, if you want some new
 feature that hasn't made it to the production release yet), you can download
 [the source code](https://github.com/google/openhtf) via
 [git](https://git-scm.com/) or other means, and install the `openhtf` package
-into your Python environment using the standard `setup.py` script.
-
-```bash
-python setup.py install
-```
+into your Python environment using the standard `build` command. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 
 ## Using OpenHTF

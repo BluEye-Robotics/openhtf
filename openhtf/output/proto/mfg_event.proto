@@ -1,3 +1,17 @@
+// Copyright 2022 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 syntax = "proto2";
 
 package openhtf;
@@ -13,7 +27,7 @@ message MfgEvent {
   // The serial number or lot info of the device under test.
   // For non-serialized items, we can track them via lot_number and an
   // optional lot_index within the lot (such as "This tray of items is lot
-  // #FOT123 and this is the part in slot 6 of the tray.
+  // #FOT123 and this is the part in slot 6 of the tray.)s
   message ByLot {
     required string lot_number = 1;
     optional string lot_index = 2;
@@ -85,6 +99,10 @@ message Measurement {
   optional double numeric_minimum = 12;
   optional double numeric_maximum = 13;
 
+  // Fields to determine numeric marginality which are used in RangeValidators.
+  optional double numeric_marginal_minimum = 25;
+  optional double numeric_marginal_maximum = 26;
+
   // If this parameter is text then fill in these fields
   optional string text_value = 14;
   // This field may be a regular expression describing the expected value
@@ -100,17 +118,36 @@ message Measurement {
   // Created for visualization by UIs that don't support certain fancy
   // parameters. UIs that do support them should hide these parameters.
   optional string associated_attachment = 21;
-  // Next tag = 24
+  // Next tag = 27
 
   extensions 5000 to 5199;
+
+  reserved 24;
 }
 
 // A parameter which is extra information from a test run.  These values are not
 // used to pass or fail a test but may be useful when inspecting data.
 message EventAttachment {
+  // A stripped, vendor compatible, BlobRef, we convert this to
+  // blobstore.Blobref on the backend.
+  message ExistingBlobRef {
+    optional bytes blob_id = 1;
+    optional int64 size = 2;
+  }
+
   required string name = 1;
 
-  optional bytes value_binary = 2;
+  oneof value {
+    // The binary value of the attachment.  Note that the total maximum size for
+    // all value_binary attachments is 1.9GB per test run.  If you need more,
+    // upload these in chunks as partial test runs.
+    bytes value_binary = 2;
+
+    // An existing BlobRef already uploaded into SteamEngine.  If you upload a
+    // partial test run, you should get a BlobRef back that you can use to
+    // populate this.  This does not count against the 1.9GB file limit.
+    ExistingBlobRef existing_blobref = 9;
+  }
 
   optional string description = 3;
   optional int64 set_time_millis = 4;
@@ -122,5 +159,5 @@ message EventAttachment {
     string mime_type = 7;
   }
 
-  // next tag = 9
+  // next tag = 10
 }

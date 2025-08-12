@@ -1,3 +1,17 @@
+# Copyright 2022 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Module for outputting test record to JSON-formatted files."""
 
 import base64
@@ -7,7 +21,6 @@ from typing import Any, BinaryIO, Callable, Dict, Iterator, Text, Union
 from openhtf.core import test_record
 from openhtf.output import callbacks
 from openhtf.util import data
-import six
 
 
 class TestRecordEncoder(json.JSONEncoder):
@@ -40,7 +53,7 @@ def convert_test_record_to_json(
   as_dict = data.convert_to_base_types(test_rec, json_safe=(not allow_nan))
   if inline_attachments:
     for phase, original_phase in zip(as_dict['phases'], test_rec.phases):
-      for name, attachment in six.iteritems(original_phase.attachments):
+      for name, attachment in original_phase.attachments.items():
         phase['attachments'][name] = attachment
   return as_dict
 
@@ -61,7 +74,7 @@ def stream_json(
   json_encoder = TestRecordEncoder(allow_nan=allow_nan, **kwargs)
 
   # The iterencode return type in typeshed for PY2 is wrong; not worried about
-  # fixing it as we are droping PY2 support soon.
+  # fixing it as we are dropping PY2 support soon.
   return json_encoder.iterencode(encoded_test_rec)  # pytype: disable=bad-return-type
 
 

@@ -1,6 +1,0 @@
-pytest
-pytest-cov
-mock
-
-# We also want everything as specified by setup.py
--e .

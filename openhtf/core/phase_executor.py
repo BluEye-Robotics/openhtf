@@ -30,7 +30,6 @@ time. A phase should not return TIMEOUT or ABORT, those are handled by the
 framework.
 """
 
-import logging
 import pstats
 import sys
 import threading
@@ -52,6 +51,7 @@ if TYPE_CHECKING:
   from openhtf.core import test_state as htf_test_state  # pylint: disable=g-import-not-at-top
 
 DEFAULT_PHASE_TIMEOUT_S = 3 * 60
+_JOIN_TRY_INTERVAL_SECONDS = 3
 
 ARG_PARSER = argv.module_parser()
 ARG_PARSER.add_argument(
@@ -61,16 +61,13 @@ ARG_PARSER.add_argument(
     target='%s.DEFAULT_PHASE_TIMEOUT_S' % __name__,
     help='Test phase timeout in seconds')
 
-# TODO(arsharma): Use the test state logger.
-_LOG = logging.getLogger(__name__)
-
 
 @attr.s(slots=True, frozen=True)
 class ExceptionInfo(object):
   """Wrap the description of a raised exception and its traceback."""
 
-  exc_type = attr.ib(type=Type[Exception])
-  exc_val = attr.ib(type=Exception)
+  exc_type = attr.ib(type=Type[BaseException])
+  exc_val = attr.ib(type=BaseException)
   exc_tb = attr.ib(type=types.TracebackType)
 
   def as_base_types(self) -> Dict[Text, Text]:
@@ -168,7 +165,8 @@ class PhaseExecutorThread(threads.KillableThread):
                subtest_rec: Optional[test_record.SubtestRecord]):
     super(PhaseExecutorThread, self).__init__(
         name='<PhaseExecutorThread: (phase_desc.name)>',
-        run_with_profiling=run_with_profiling)
+        run_with_profiling=run_with_profiling,
+        logger=test_state.state_logger.getChild('phase_executor_thread'))
     self._phase_desc = phase_desc
     self._test_state = test_state
     self._subtest_rec = subtest_rec
@@ -200,10 +198,15 @@ class PhaseExecutorThread(threads.KillableThread):
 
   def join_or_die(self) -> PhaseExecutionOutcome:
     """Wait for thread to finish, returning a PhaseExecutionOutcome instance."""
+    deadline = time.monotonic() + DEFAULT_PHASE_TIMEOUT_S
     if self._phase_desc.options.timeout_s is not None:
-      self.join(self._phase_desc.options.timeout_s)
-    else:
-      self.join(DEFAULT_PHASE_TIMEOUT_S)
+      deadline = time.monotonic() + self._phase_desc.options.timeout_s
+    while time.monotonic() < deadline:
+      # Using exception to kill thread is not honored when thread is busy,
+      # so we leave the thread behind, and move on teardown.
+      self.join(_JOIN_TRY_INTERVAL_SECONDS)
+      if not self.is_alive() or self._killed.is_set():
+        break
 
     # We got a return value or an exception and handled it.
     if self._phase_execution_outcome:
@@ -231,11 +234,26 @@ class PhaseExecutor(object):
 
   def __init__(self, test_state: 'htf_test_state.TestState'):
     self.test_state = test_state
+    self.logger = test_state.state_logger.getChild('phase_executor')
     # This lock exists to prevent stop() calls from being ignored if called when
     # _execute_phase_once is setting up the next phase thread.
     self._current_phase_thread_lock = threading.Lock()
     self._current_phase_thread = None  # type: Optional[PhaseExecutorThread]
     self._stopping = threading.Event()
+
+  def _should_repeat(self, phase: phase_descriptor.PhaseDescriptor,
+                     phase_execution_outcome: PhaseExecutionOutcome) -> bool:
+    """Returns whether a phase should be repeated."""
+    if phase_execution_outcome.is_timeout and phase.options.repeat_on_timeout:
+      return True
+    elif phase_execution_outcome.is_repeat:
+      return True
+    elif phase.options.force_repeat:
+      return True
+    elif phase.options.repeat_on_measurement_fail:
+      last_phase_outcome = self.test_state.test_record.phases[-1].outcome
+      return last_phase_outcome == test_record.PhaseOutcome.FAIL
+    return False
 
   def execute_phase(
       self,
@@ -260,13 +278,15 @@ class PhaseExecutor(object):
       requested and successfully ran for this phase execution.
     """
     repeat_count = 1
-    repeat_limit = phase.options.repeat_limit or sys.maxsize
+    repeat_limit = (
+        phase.options.repeat_limit or phase_descriptor.DEFAULT_REPEAT_LIMIT
+    )
     while not self._stopping.is_set():
       is_last_repeat = repeat_count >= repeat_limit
       phase_execution_outcome, profile_stats = self._execute_phase_once(
           phase, is_last_repeat, run_with_profiling, subtest_rec)
-
-      if phase_execution_outcome.is_repeat and not is_last_repeat:
+      if (self._should_repeat(phase, phase_execution_outcome) and
+          not is_last_repeat):
         repeat_count += 1
         continue
 
@@ -283,19 +303,31 @@ class PhaseExecutor(object):
   ) -> Tuple[PhaseExecutionOutcome, Optional[pstats.Stats]]:
     """Executes the given phase, returning a PhaseExecutionOutcome."""
     # Check this before we create a PhaseState and PhaseRecord.
-    if phase_desc.options.run_if and not phase_desc.options.run_if():
-      _LOG.debug('Phase %s skipped due to run_if returning falsey.',
-                 phase_desc.name)
-      return PhaseExecutionOutcome(phase_descriptor.PhaseResult.SKIP), None
+    if phase_desc.options.run_if:
+      try:
+        run_phase = phase_desc.options.run_if()
+      except Exception:  # pylint: disable=broad-except
+        self.logger.debug('Phase %s stopped due to a fault in run_if function.',
+                          phase_desc.name)
+        # Allow graceful termination
+        return PhaseExecutionOutcome(ExceptionInfo(*sys.exc_info())), None
+
+      if not run_phase:
+        self.logger.debug('Phase %s skipped due to run_if returning falsey.',
+                          phase_desc.name)
+        return PhaseExecutionOutcome(phase_descriptor.PhaseResult.SKIP), None
+
 
     override_result = None
     with self.test_state.running_phase_context(phase_desc) as phase_state:
       if subtest_rec:
-        _LOG.debug('Executing phase %s under subtest %s', phase_desc.name,
-                   subtest_rec.name)
+        self.logger.debug('Executing phase %s under subtest %s (from %s)',
+                          phase_desc.name, phase_desc.func_location,
+                          subtest_rec.name)
         phase_state.set_subtest_name(subtest_rec.name)
       else:
-        _LOG.debug('Executing phase %s', phase_desc.name)
+        self.logger.debug('Executing phase %s (from %s)', phase_desc.name,
+                          phase_desc.func_location)
       with self._current_phase_thread_lock:
         # Checking _stopping must be in the lock context, otherwise there is a
         # race condition: this thread checks _stopping and then switches to
@@ -315,7 +347,7 @@ class PhaseExecutor(object):
 
       phase_state.result = phase_thread.join_or_die()
       if phase_state.result.is_repeat and is_last_repeat:
-        _LOG.error('Phase returned REPEAT, exceeding repeat_limit.')
+        self.logger.error('Phase returned REPEAT, exceeding repeat_limit.')
         phase_state.hit_repeat_limit = True
         override_result = PhaseExecutionOutcome(
             phase_descriptor.PhaseResult.STOP)
@@ -324,15 +356,15 @@ class PhaseExecutor(object):
     # Refresh the result in case a validation for a partially set measurement
     # or phase diagnoser raised an exception.
     result = override_result or phase_state.result
-    _LOG.debug('Phase %s finished with result %s', phase_desc.name,
-               result.phase_result)
+    self.logger.debug('Phase %s finished with result %r', phase_desc.name,
+                      result.phase_result)
     return (result,
             phase_thread.get_profile_stats() if run_with_profiling else None)
 
   def skip_phase(self, phase_desc: phase_descriptor.PhaseDescriptor,
                  subtest_rec: Optional[test_record.SubtestRecord]) -> None:
     """Skip a phase, but log a record of it."""
-    _LOG.debug('Automatically skipping phase %s', phase_desc.name)
+    self.logger.debug('Automatically skipping phase %s', phase_desc.name)
     with self.test_state.running_phase_context(phase_desc) as phase_state:
       if subtest_rec:
         phase_state.set_subtest_name(subtest_rec.name)
@@ -346,16 +378,17 @@ class PhaseExecutor(object):
     """Evaluate a checkpoint, returning a PhaseExecutionOutcome."""
     if subtest_rec:
       subtest_name = subtest_rec.name
-      _LOG.debug('Evaluating checkpoint %s under subtest %s', checkpoint.name,
-                 subtest_name)
+      self.logger.debug('Evaluating checkpoint %s under subtest %s',
+                        checkpoint.name, subtest_name)
     else:
-      _LOG.debug('Evaluating checkpoint %s', checkpoint.name)
+      self.logger.debug('Evaluating checkpoint %s', checkpoint.name)
       subtest_name = None
     evaluated_millis = util.time_millis()
     try:
-      outcome = PhaseExecutionOutcome(checkpoint.get_result(self.test_state))
-      _LOG.debug('Checkpoint %s result: %s', checkpoint.name,
-                 outcome.phase_result)
+      outcome = PhaseExecutionOutcome(checkpoint.get_result(self.test_state,
+                                                            subtest_rec))
+      self.logger.debug('Checkpoint %s result: %s', checkpoint.name,
+                        outcome.phase_result)
       if outcome.is_fail_subtest and not subtest_rec:
         raise InvalidPhaseResultError(
             'Checkpoint returned FAIL_SUBTEST, but subtest not running.')
@@ -372,7 +405,7 @@ class PhaseExecutor(object):
   def skip_checkpoint(self, checkpoint: phase_branches.Checkpoint,
                       subtest_rec: Optional[test_record.SubtestRecord]) -> None:
     """Skip a checkpoint, but log a record of it."""
-    _LOG.debug('Automatically skipping checkpoint %s', checkpoint.name)
+    self.logger.debug('Automatically skipping checkpoint %s', checkpoint.name)
     subtest_name = subtest_rec.name if subtest_rec else None
     checkpoint_rec = test_record.CheckpointRecord.from_checkpoint(
         checkpoint, subtest_name,
@@ -404,11 +437,11 @@ class PhaseExecutor(object):
     if phase_thread.is_alive():
       phase_thread.kill()
 
-      _LOG.debug('Waiting for cancelled phase to exit: %s', phase_thread)
+      self.logger.debug('Waiting for cancelled phase to exit: %s', phase_thread)
       timeout = timeouts.PolledTimeout.from_seconds(timeout_s)
       while phase_thread.is_alive() and not timeout.has_expired():
         time.sleep(0.1)
-      _LOG.debug('Cancelled phase %s exit',
-                 "didn't" if phase_thread.is_alive() else 'did')
+      self.logger.debug('Cancelled phase %s exit',
+                        "didn't" if phase_thread.is_alive() else 'did')
     # Clear the currently running phase, whether it finished or timed out.
     self.test_state.stop_running_phase()

@@ -1,8 +1,21 @@
+# Copyright 2022 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Tests for google3.third_party.py.openhtf.test.core.phase_branches."""
 
 import unittest
-
-import mock
+from unittest import mock
 
 import openhtf as htf
 from openhtf.core import phase_branches
@@ -433,6 +446,174 @@ class PhaseFailureCheckpointIntegrationTest(htf_test.TestCase):
                 htf.PhaseResult.FAIL_SUBTEST),
             evaluated_millis=htf_test.VALID_TIMESTAMP),
     ], test_rec.checkpoints)
+
+  @htf_test.yields_phases
+  def test_subtest_previous_fail__fail(self):
+    test_rec = yield htf.Test(
+        fail_phase, phase0,
+        phase_branches.PhaseFailureCheckpoint.subtest_previous(
+            'subtest_previous_fail', action=htf.PhaseResult.STOP), error_phase)
+
+    self.assertTestFail(test_rec)
+    self.assertPhasesOutcomeByName(test_record.PhaseOutcome.PASS, test_rec,
+                                   'phase0')
+    self.assertPhasesOutcomeByName(test_record.PhaseOutcome.FAIL, test_rec,
+                                   'fail_phase')
+
+    self.assertEqual([
+        test_record.CheckpointRecord(
+            name='subtest_previous_fail',
+            action=htf.PhaseResult.STOP,
+            conditional=phase_branches.PreviousPhases.SUBTEST,
+            subtest_name=None,
+            result=phase_executor.PhaseExecutionOutcome(htf.PhaseResult.STOP),
+            evaluated_millis=htf_test.VALID_TIMESTAMP),
+    ], test_rec.checkpoints)
+
+  @htf_test.yields_phases
+  def test_subtest_previous_fail__pass(self):
+    test_rec = yield htf.Test(
+        phase0, phase1,
+        phase_branches.PhaseFailureCheckpoint.subtest_previous(
+            'subtest_previous_pass', action=htf.PhaseResult.STOP), phase2)
+
+    self.assertTestPass(test_rec)
+    self.assertPhasesOutcomeByName(test_record.PhaseOutcome.PASS, test_rec,
+                                   'phase0', 'phase1', 'phase2')
+
+    self.assertEqual([
+        test_record.CheckpointRecord(
+            name='subtest_previous_pass',
+            action=htf.PhaseResult.STOP,
+            conditional=phase_branches.PreviousPhases.SUBTEST,
+            subtest_name=None,
+            result=phase_executor.PhaseExecutionOutcome(
+                htf.PhaseResult.CONTINUE),
+            evaluated_millis=htf_test.VALID_TIMESTAMP),
+    ], test_rec.checkpoints)
+
+  @htf_test.yields_phases
+  def test_subtest_previous_fail__fail_in_subtest(self):
+    test_rec = yield htf.Test(
+        phase0,
+        htf.Subtest(
+            'sub',
+            fail_phase,
+            phase1,
+            phase_branches.PhaseFailureCheckpoint.subtest_previous(
+                'subtest_previous_fail_in_subtest',
+                action=htf.PhaseResult.STOP),
+        ), error_phase)
+
+    self.assertTestFail(test_rec)
+    self.assertPhasesOutcomeByName(test_record.PhaseOutcome.PASS, test_rec,
+                                   'phase0', 'phase1')
+    self.assertPhasesOutcomeByName(test_record.PhaseOutcome.FAIL, test_rec,
+                                   'fail_phase')
+
+    self.assertEqual([
+        test_record.CheckpointRecord(
+            name='subtest_previous_fail_in_subtest',
+            action=htf.PhaseResult.STOP,
+            conditional=phase_branches.PreviousPhases.SUBTEST,
+            subtest_name='sub',
+            result=phase_executor.PhaseExecutionOutcome(htf.PhaseResult.STOP),
+            evaluated_millis=htf_test.VALID_TIMESTAMP),
+    ], test_rec.checkpoints)
+
+  @htf_test.yields_phases
+  def test_subtest_previous_fail__fail_out_of_subtest(self):
+    test_rec = yield htf.Test(
+        fail_phase,
+        htf.Subtest(
+            'sub',
+            phase0,
+            phase_branches.PhaseFailureCheckpoint.subtest_previous(
+                'subtest_previous_fail_out_of_subtest',
+                action=htf.PhaseResult.STOP),
+            phase1,
+        ), phase2)
+
+    self.assertTestFail(test_rec)
+    self.assertPhasesOutcomeByName(test_record.PhaseOutcome.PASS, test_rec,
+                                   'phase0', 'phase1', 'phase2')
+    self.assertPhasesOutcomeByName(test_record.PhaseOutcome.FAIL, test_rec,
+                                   'fail_phase')
+
+    self.assertEqual([
+        test_record.CheckpointRecord(
+            name='subtest_previous_fail_out_of_subtest',
+            action=htf.PhaseResult.STOP,
+            conditional=phase_branches.PreviousPhases.SUBTEST,
+            subtest_name='sub',
+            result=phase_executor.PhaseExecutionOutcome(
+                htf.PhaseResult.CONTINUE),
+            evaluated_millis=htf_test.VALID_TIMESTAMP),
+    ], test_rec.checkpoints)
+
+  @htf_test.yields_phases
+  def test_subtest_previous_fail__pass_in_subtest(self):
+    test_rec = yield htf.Test(
+        phase0,
+        htf.Subtest(
+            'sub',
+            phase1,
+            phase_branches.PhaseFailureCheckpoint.subtest_previous(
+                'subtest_previous_pass_in_subtest',
+                action=htf.PhaseResult.STOP),
+            phase2,
+        ), phase3)
+
+    self.assertTestPass(test_rec)
+    self.assertPhasesOutcomeByName(test_record.PhaseOutcome.PASS, test_rec,
+                                   'phase0', 'phase1', 'phase2', 'phase3')
+    self.assertPhasesOutcomeByName(test_record.PhaseOutcome.FAIL, test_rec,
+                                   'fail_phase')
+
+    self.assertEqual([
+        test_record.CheckpointRecord(
+            name='subtest_previous_pass_in_subtest',
+            action=htf.PhaseResult.STOP,
+            conditional=phase_branches.PreviousPhases.SUBTEST,
+            subtest_name='sub',
+            result=phase_executor.PhaseExecutionOutcome(
+                htf.PhaseResult.CONTINUE),
+            evaluated_millis=htf_test.VALID_TIMESTAMP),
+    ], test_rec.checkpoints)
+
+  @htf_test.yields_phases
+  def test_subtest_previous_fail_subtest__fail_in_subtest(self):
+    test_rec = yield htf.Test(
+        phase0,
+        htf.Subtest(
+            'sub',
+            fail_phase,
+            phase1,
+            phase_branches.PhaseFailureCheckpoint.subtest_previous(
+                'subtest_previous_fail_subtest_in_subtest',
+                action=htf.PhaseResult.FAIL_SUBTEST),
+            skip0,
+        ), phase2)
+
+    self.assertTestFail(test_rec)
+    self.assertPhasesOutcomeByName(test_record.PhaseOutcome.PASS, test_rec,
+                                   'phase0', 'phase1', 'phase2')
+    self.assertPhasesOutcomeByName(test_record.PhaseOutcome.FAIL, test_rec,
+                                   'fail_phase')
+    self.assertPhasesOutcomeByName(test_record.PhaseOutcome.SKIP, test_rec,
+                                   'skip0')
+
+    self.assertEqual([
+        test_record.CheckpointRecord(
+            name='subtest_previous_fail_subtest_in_subtest',
+            action=htf.PhaseResult.FAIL_SUBTEST,
+            conditional=phase_branches.PreviousPhases.SUBTEST,
+            subtest_name='sub',
+            result=phase_executor.PhaseExecutionOutcome(
+                htf.PhaseResult.FAIL_SUBTEST),
+            evaluated_millis=htf_test.VALID_TIMESTAMP),
+    ], test_rec.checkpoints)
+
 
   @htf_test.yields_phases
   def test_all__no_previous_phases(self):

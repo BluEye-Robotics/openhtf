@@ -55,7 +55,6 @@ from openhtf.core import phase_descriptor
 from openhtf.core import test_state as core_test_state
 from openhtf.util import threads
 from openhtf.util import units as uom
-import six
 
 
 class _MonitorThread(threads.KillableThread):
@@ -76,14 +75,9 @@ class _MonitorThread(threads.KillableThread):
     self.extra_kwargs = extra_kwargs
 
   def get_value(self) -> Any:
-    if six.PY3:
-      argspec = inspect.getfullargspec(self.monitor_desc.func)
-      argspec_args = argspec.args
-      argspec_keywords = argspec.varkw
-    else:
-      argspec = inspect.getargspec(self.monitor_desc.func)  # pylint: disable=deprecated-method
-      argspec_args = argspec.args
-      argspec_keywords = argspec.keywords
+    argspec = inspect.getfullargspec(self.monitor_desc.func)
+    argspec_args = argspec.args
+    argspec_keywords = argspec.varkw
     if argspec_keywords:
       # Monitor phase takes **kwargs, so just pass everything in.
       kwargs = self.extra_kwargs
@@ -155,7 +149,7 @@ def monitors(
 
     @openhtf.PhaseOptions(requires_state=True)
     @plugs.plug(update_kwargs=False, **monitor_plugs)
-    @measurements.measures(
+    @openhtf.measures(
         measurements.Measurement(measurement_name).with_units(
             units).with_dimensions(uom.MILLISECOND))
     @functools.wraps(phase_desc.func)

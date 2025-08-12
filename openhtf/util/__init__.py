@@ -18,12 +18,10 @@ import re
 import threading
 import time
 import typing
-from typing import Any, Callable, Dict, Iterator, Optional, Text, Tuple, Type, TypeVar, Union
+from typing import Any, Callable, Dict, Iterator, Optional, Text, Tuple, TypeVar
 import weakref
 
 import attr
-
-import six
 
 
 def _log_every_n_to_logger(n: int, logger: Optional[logging.Logger], level: int,
@@ -50,7 +48,7 @@ def _log_every_n_to_logger(n: int, logger: Optional[logging.Logger], level: int,
       yield True
 
   gen = _gen()
-  return lambda: six.next(gen)
+  return lambda: next(gen)
 
 
 def log_every_n(n: int, level: int, message: Text,
@@ -169,7 +167,7 @@ def format_string(target, kwargs):
     return None
   if callable(target):
     return target(**kwargs)
-  if not isinstance(target, six.string_types):
+  if not isinstance(target, str):
     return target
   if '{' in target:
     return partial_format(target, **kwargs)

@@ -23,6 +23,7 @@ the `logger` parameter should be overridden, e.g. by passing in the test record
 logger for the current test.
 """
 
+import contextlib
 import logging
 import math
 import os
@@ -32,8 +33,6 @@ import sys
 import textwrap
 
 import colorama
-import contextlib2 as contextlib
-
 from openhtf.util import argv
 
 # Colorama module has to be initialized before use.
@@ -74,7 +73,7 @@ def _linesep_for_file(file):
   return '\n'
 
 
-def banner_print(msg, color='', width=60, file=sys.stdout, logger=_LOG):
+def banner_print(msg, color='', width=80, file=sys.stdout, logger=_LOG):
   """Print the message as a banner with a fixed width.
 
   Also logs the message (un-bannered) to the given logger at the debug level.

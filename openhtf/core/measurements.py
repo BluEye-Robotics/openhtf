@@ -22,7 +22,7 @@ stored as Attachments (see attachments.py).
 Measurements are described by the measurements.Measurement class.  Essentially,
 the Measurement class is used by test authors to declare measurements by name,
 and to optionally provide unit, type, and validation information.  Measurements
-are attached to Test Phases using the @measurements.measures() decorator.
+are attached to Test Phases using the @openhtf.measures() decorator.
 
 When measurements are output by the OpenHTF framework, the Measurement objects
 are serialized into the 'measurements' field on the PhaseRecord, which contain
@@ -45,11 +45,11 @@ measurement validators.
 
 Examples:
 
-  @measurements.measures(
+  @openhtf.measures(
       measurements.Measurement(
           'number_widgets').in_range(5, 10).doc(
           '''This phase parameter tracks the number of widgets.'''))
-  @measurements.measures(
+  @openhtf.measures(
       *(measurements.Measurement('level_%s' % lvl)
         for lvl in ('none', 'some', 'all')))
   def WidgetTestPhase(test):
@@ -59,20 +59,20 @@ Examples:
 """
 
 import collections
+import copy
 import enum
 import functools
 import logging
+import typing
 from typing import Any, Callable, Dict, Iterator, List, Optional, Text, Tuple, Union
 
 import attr
-
 from openhtf import util
-from openhtf.core import diagnoses_lib
-from openhtf.core import phase_descriptor
 from openhtf.util import data
 from openhtf.util import units as util_units
 from openhtf.util import validators
-import six
+if typing.TYPE_CHECKING:
+  from openhtf.core import diagnoses_lib
 
 try:
   # pylint: disable=g-import-not-at-top
@@ -119,7 +119,7 @@ class _ConditionalValidator(object):
   """Conditional validator declaration."""
 
   # The diagnosis result required for the validator to be used.
-  result = attr.ib(type=diagnoses_lib.DiagResultEnum)
+  result = attr.ib(type='diagnoses_lib.DiagResultEnum')
 
   # The validator to use when the result is present.
   validator = attr.ib(type=Callable[[Any], bool])
@@ -146,7 +146,7 @@ def _coordinates_len(coordinates: Any) -> int:
     coordinates: any type, measurement coordinates for multidimensional
       measurements.
   """
-  if isinstance(coordinates, six.string_types):
+  if isinstance(coordinates, str):
     return 1
   if hasattr(coordinates, '__len__'):
     return len(coordinates)
@@ -187,6 +187,9 @@ class Measurement(object):
     notification_cb: An optional function to be called when the measurement is
       set.
     outcome: One of the Outcome() enumeration values, starting at UNSET.
+    marginal: A bool flag indicating if this measurement is marginal if the
+      outcome is PASS.
+    set_time_millis: The time the measurement is set in milliseconds.
     _cached: A cached dict representation of this measurement created initially
       during as_base_types and updated in place to save allocation time.
   """
@@ -211,6 +214,8 @@ class Measurement(object):
       type=Union['MeasuredValue', 'DimensionedMeasuredValue'], default=None)
   _notification_cb = attr.ib(type=Optional[Callable[[], None]], default=None)
   outcome = attr.ib(type=Outcome, default=Outcome.UNSET)
+  marginal = attr.ib(type=bool, default=False)
+  set_time_millis = attr.ib(type=int, default=None)
 
   # Runtime cache to speed up conversions.
   _cached = attr.ib(type=Optional[Dict[Text, Any]], default=None)
@@ -341,7 +346,7 @@ class Measurement(object):
     return self
 
   def validate_on(
-      self, result_to_validator_mapping: Dict[diagnoses_lib.DiagResultEnum,
+      self, result_to_validator_mapping: Dict['diagnoses_lib.DiagResultEnum',
                                               Callable[[Any], bool]]
   ) -> 'Measurement':
     """Adds conditional validators.
@@ -357,7 +362,7 @@ class Measurement(object):
     Returns:
       This measurement, used for chaining operations.
     """
-    for result, validator in six.iteritems(result_to_validator_mapping):
+    for result, validator in result_to_validator_mapping.items():
       if not callable(validator):
         raise ValueError('Validator must be callable', validator)
       self.conditional_validators.append(
@@ -414,11 +419,17 @@ class Measurement(object):
     return _with_validator
 
   def validate(self) -> 'Measurement':
-    """Validate this measurement and update its 'outcome' field."""
+    """Validate this measurement and update 'outcome' and 'marginal' fields."""
     # PASS if all our validators return True, otherwise FAIL.
     try:
       if all(v(self._measured_value.value) for v in self.validators):
         self.outcome = Outcome.PASS
+
+        # Only check marginality for passing measurements.
+        if any(
+            hasattr(v, 'is_marginal') and
+            v.is_marginal(self._measured_value.value) for v in self.validators):
+          self.marginal = True
       else:
         self.outcome = Outcome.FAIL
       return self
@@ -429,7 +440,7 @@ class Measurement(object):
       raise
     finally:
       if self._cached:
-        self._cached['outcome'] = self.outcome.name
+        self._cached['outcome'] = self.outcome.name  # pytype: disable=bad-return-type
 
   def as_base_types(self) -> Dict[Text, Any]:
     """Convert this measurement to a dict of basic types."""
@@ -468,6 +479,35 @@ class Measurement(object):
     dataframe = self._measured_value.to_dataframe(columns)
 
     return dataframe
+
+  def from_dataframe(self, dataframe: Any, metric_column: str) -> None:
+    """Convert a pandas DataFrame to a multi-dim measurement.
+
+    Args:
+      dataframe: A pandas DataFrame. Dimensions for this multi-dim measurement
+        need to match columns in the DataFrame (can be multi-index).
+      metric_column: The column name of the metric to be measured.
+
+    Raises:
+      TypeError: If this measurement is not dimensioned.
+      ValueError: If dataframe is missing dimensions.
+    """
+    if not isinstance(self._measured_value, DimensionedMeasuredValue):
+      raise TypeError(
+          'Only a dimensioned measurement can be set from a DataFrame'
+      )
+    dimension_labels = [d.name for d in self.dimensions]
+    dimensioned_df = dataframe.reset_index()
+    try:
+      dimensioned_df.set_index(dimension_labels, inplace=True)
+    except KeyError as e:
+      raise ValueError('DataFrame is missing dimensions') from e
+    if metric_column not in dimensioned_df.columns:
+      raise ValueError(
+          f'DataFrame does not have a column named {metric_column}'
+      )
+    for row_dimensions, row_metrics in dimensioned_df.iterrows():
+      self.measured_value[row_dimensions] = row_metrics[metric_column]
 
 
 @attr.s(slots=True)
@@ -648,7 +688,7 @@ class DimensionedMeasuredValue(object):
 
   def __iter__(self) -> Iterator[Any]:
     """Iterate over items, allows easy conversion to a dict."""
-    return iter(six.iteritems(self.value_dict))
+    return iter(self.value_dict.items())
 
   def __setitem__(self, coordinates: Any, value: Any) -> None:
     coordinates_len = _coordinates_len(coordinates)
@@ -707,14 +747,14 @@ class DimensionedMeasuredValue(object):
       raise MeasurementNotSetError('Measurement not yet set', self.name)
     return [
         dimensions + (value,)
-        for dimensions, value in six.iteritems(self.value_dict)
+        for dimensions, value in self.value_dict.items()
     ]
 
   def basetype_value(self) -> List[Any]:
     if self._cached_basetype_values is None:
       self._cached_basetype_values = list(
           data.convert_to_base_types(coordinates + (value,))
-          for coordinates, value in six.iteritems(self.value_dict))
+          for coordinates, value in self.value_dict.items())
     return self._cached_basetype_values
 
   def to_dataframe(self, columns: Any = None) -> Any:
@@ -724,6 +764,42 @@ class DimensionedMeasuredValue(object):
     if not pandas:
       raise RuntimeError('Install pandas to convert to pandas.DataFrame')
     return pandas.DataFrame.from_records(self.value, columns=columns)
+
+
+@attr.s(slots=True, frozen=True)
+class ImmutableMeasurement(object):
+  """Immutable copy of a measurement."""
+
+  name = attr.ib(type=Text)
+  value = attr.ib(type=Any)
+  units = attr.ib(type=Optional[util_units.UnitDescriptor])
+  dimensions = attr.ib(type=Optional[List[Dimension]])
+  outcome = attr.ib(type=Optional[Outcome])
+  docstring = attr.ib(type=Optional[Text], default=None)
+
+  @classmethod
+  def from_measurement(cls, measurement: Measurement) -> 'ImmutableMeasurement':
+    """Convert a Measurement into an ImmutableMeasurement."""
+    measured_value = measurement.measured_value
+    if isinstance(measured_value, DimensionedMeasuredValue):
+      value = data.attr_copy(
+          measured_value, value_dict=copy.deepcopy(measured_value.value_dict)
+      )
+    else:
+      value = (
+          copy.deepcopy(measured_value.value)
+          if measured_value.is_value_set
+          else None
+      )
+
+    return cls(
+        name=measurement.name,
+        value=value,
+        units=measurement.units,
+        dimensions=measurement.dimensions,
+        outcome=measurement.outcome,
+        docstring=measurement.docstring,
+    )
 
 
 @attr.s(slots=True)
@@ -781,7 +857,7 @@ class Collection(object):
   def __iter__(self) -> Iterator[Tuple[Text, Any]]:
     """Extract each MeasurementValue's value."""
     return ((key, meas.measured_value.value)
-            for key, meas in six.iteritems(self._measurements))
+            for key, meas in self._measurements.items())
 
   def _custom_setattr(self, name: Text, value: Any) -> None:
     if name == '_measurements':
@@ -800,6 +876,7 @@ class Collection(object):
           'Cannot set dimensioned measurement without indices')
     m.measured_value.set(value)
     m.notify_value_set()
+    m.set_time_millis = util.time_millis()
 
   def __getitem__(self, name: Text) -> Any:
     self._assert_valid_key(name)
@@ -811,69 +888,9 @@ class Collection(object):
     # Return the MeasuredValue's value, MeasuredValue will raise if not set.
     return m.measured_value.value
 
+
 # Work around for attrs bug in 20.1.0; after the next release, this can be
 # removed and `Collection._custom_setattr` can be renamed to `__setattr__`.
 # https://github.com/python-attrs/attrs/issues/680
 Collection.__setattr__ = Collection._custom_setattr  # pylint: disable=protected-access
 del Collection._custom_setattr
-
-
-def measures(
-    *measurements: Union[Text, Measurement], **kwargs: Any
-) -> Callable[[phase_descriptor.PhaseT], phase_descriptor.PhaseDescriptor]:
-  """Decorator-maker used to declare measurements for phases.
-
-  See the measurements module docstring for examples of usage.
-
-  Args:
-    *measurements: Measurement objects to declare, or a string name from which
-      to create a Measurement.
-    **kwargs: Keyword arguments to pass to Measurement constructor if we're
-      constructing one.  Note that if kwargs are provided, the length of
-      measurements must be 1, and that value must be a string containing the
-      measurement name.  For valid kwargs, see the definition of the Measurement
-      class.
-
-  Raises:
-    InvalidMeasurementTypeError: When the measurement is not defined correctly.
-
-  Returns:
-    A decorator that declares the measurement(s) for the decorated phase.
-  """
-
-  def _maybe_make(meas: Union[Text, Measurement]) -> Measurement:
-    """Turn strings into Measurement objects if necessary."""
-    if isinstance(meas, Measurement):
-      return meas
-    elif isinstance(meas, six.string_types):
-      return Measurement(meas, **kwargs)
-    raise InvalidMeasurementTypeError('Expected Measurement or string', meas)
-
-  # In case we're declaring a measurement inline, we can only declare one.
-  if kwargs and len(measurements) != 1:
-    raise InvalidMeasurementTypeError(
-        'If @measures kwargs are provided, a single measurement name must be '
-        'provided as a positional arg first.')
-
-  # Unlikely, but let's make sure we don't allow overriding initial outcome.
-  if 'outcome' in kwargs:
-    raise ValueError('Cannot specify outcome in measurement declaration!')
-
-  measurements = [_maybe_make(meas) for meas in measurements]
-
-  # 'measurements' is guaranteed to be a list of Measurement objects here.
-  def decorate(
-      wrapped_phase: phase_descriptor.PhaseT
-  ) -> phase_descriptor.PhaseDescriptor:
-    """Phase decorator to be returned."""
-    phase = phase_descriptor.PhaseDescriptor.wrap_or_copy(wrapped_phase)
-    duplicate_names = (
-        set(m.name for m in measurements)
-        & set(m.name for m in phase.measurements))
-    if duplicate_names:
-      raise DuplicateNameError('Measurement names duplicated', duplicate_names)
-
-    phase.measurements.extend(measurements)
-    return phase
-
-  return decorate

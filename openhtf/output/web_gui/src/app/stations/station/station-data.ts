@@ -1,4 +1,20 @@
 /**
+ * Copyright 2022 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
  * Functions for processing data from the station API.
  */
 
@@ -31,6 +47,13 @@ const measurementStatusMap = {
   'FAIL': MeasurementStatus.fail,
   'UNSET': MeasurementStatus.unset,
   'PARTIALLY_SET': MeasurementStatus.unset,
+};
+
+const phaseRecordOutcomeMap = {
+  'PASS': PhaseStatus.pass,
+  'FAIL': PhaseStatus.fail,
+  'SKIP': PhaseStatus.skip,
+  'ERROR': PhaseStatus.error,
 };
 
 export interface RawTestState {
@@ -78,6 +101,7 @@ export interface RawPhase {
   name: string;
   result?: {};  // Not present on running phase state.
   start_time_millis: number;
+  outcome: string;
 }
 
 export interface RawAttachment {
@@ -201,13 +225,7 @@ function makePhase(phase: RawPhase, running: boolean) {
   if (running) {
     status = PhaseStatus.running;
   } else {
-    status = PhaseStatus.pass;
-    for (const measurement of measurements) {
-      if (measurement.status !== MeasurementStatus.pass) {
-        status = PhaseStatus.fail;
-        break;
-      }
-    }
+    status = phaseRecordOutcomeMap[phase.outcome];
   }
   return new Phase({
     attachments,

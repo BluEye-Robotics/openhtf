@@ -60,34 +60,41 @@ would see the output (with other framework logs before and after):
   Tearing down ExamplePlug!
 
 Plugs will often need to use configuration values.  The recommended way
-of doing this is with the conf.inject_positional_args decorator:
+of doing this is with the configuration.inject_positional_args decorator:
 
   from openhtf import plugs
-  from openhtf.util import conf
+  from openhtf.util import configuration
 
-  conf.declare('my_config_key', default_value='my_config_value')
+  CONF = configuration.CONF
+  MY_CONFIG_KEY = CONF.declare('my_config_key', default_value='my_config_value')
+
+  CONF.declare('my_config_key', default_value='my_config_value')
 
   class ExamplePlug(base_plugs.BasePlug):
     '''A plug that requires some configuration.'''
 
-    @conf.inject_positional_args
     def __init__(self, my_config_key)
       self._my_config = my_config_key
 
-Note that Plug constructors shouldn't take any other arguments; the
-framework won't pass any, so you'll get a TypeError.  Any values that are only
-known at run time must be either passed into other methods or set via explicit
-setter methods.  See openhtf/conf.py for details, but with the above
-example, you would also need a configuration .yaml file with something like:
+  example_plug_configured = configuration.bind_init_args(
+      ExamplePlug, MY_CONFIG_KEY)
+
+Here, example_plug_configured is a subclass of ExamplePlug with bound args for
+the initializer, and it can be passed to phases like any other plug. See
+openhtf/conf.py for details, but with the above example, you would also need a
+configuration .yaml file with something like:
 
   my_config_key: my_config_value
 
-This will result in the ExamplePlug being constructed with
+This will result in the example_plug_configured being constructed with
 self._my_config having a value of 'my_config_value'.
+
+Note that Plug constructors shouldn't take any other arguments; the
+framework won't pass any, so you'll get a TypeError.
 """
 
 import logging
-from typing import Any, Dict, Set, Text, Type, Union
+from typing import Any, Dict, Text, Type, Union
 
 import attr
 
@@ -103,23 +110,35 @@ class InvalidPlugError(Exception):
 class BasePlug(object):
   """All plug types must subclass this type.
 
+  Okay to use with multiple inheritance when subclassing an existing
+  implementation that you want to convert into a plug. Place BasePlug last in
+  the parent list. For example:
+
+  class MyExistingDriver:
+    def do_something(self):
+      pass
+
+  class MyExistingDriverPlug(MyExistingDriver, BasePlug):
+    def tearDown(self):
+      ...  # Implement the BasePlug interface as desired.
+
   Attributes:
     logger: This attribute will be set by the PlugManager (and as such it
       doesn't appear here), and is the same logger as passed into test phases
       via TestApi.
   """
   # Override this to True in subclasses to support remote Plug access.
-  enable_remote = False  # type: bool
+  enable_remote: bool = False
   # Allow explicitly disabling remote access to specific attributes.
-  disable_remote_attrs = set()  # type: Set[Text]
+  disable_remote_attrs = set()
   # Override this to True in subclasses to support using with_plugs with this
   # plug without needing to use placeholder.  This will only affect the classes
   # that explicitly define this; subclasses do not share the declaration.
-  auto_placeholder = False  # type: bool
+  auto_placeholder: bool = False
   # Default logger to be used only in __init__ of subclasses.
   # This is overwritten both on the class and the instance so don't store
   # a copy of it anywhere.
-  logger = _LOG  # type: logging.Logger
+  logger: logging.Logger = _LOG
 
   @util.classproperty
   def placeholder(cls) -> 'PlugPlaceholder':  # pylint: disable=no-self-argument
@@ -147,14 +166,12 @@ class BasePlug(object):
 
   def tearDown(self) -> None:
     """This method is called automatically at the end of each Test execution."""
-    pass
 
   @classmethod
   def uses_base_tear_down(cls) -> bool:
     """Checks whether the tearDown method is the BasePlug implementation."""
-    this_tear_down = getattr(cls, 'tearDown')
-    base_tear_down = getattr(BasePlug, 'tearDown')
-    return this_tear_down.__code__ is base_tear_down.__code__
+    this_tear_down = getattr(cls, BasePlug.tearDown.__name__)
+    return this_tear_down.__code__ is BasePlug.tearDown.__code__
 
 
 class FrontendAwareBasePlug(BasePlug, util.SubscribableStateMixin):
@@ -168,7 +185,7 @@ class FrontendAwareBasePlug(BasePlug, util.SubscribableStateMixin):
   Since the Station API runs in a separate thread, the _asdict() method of
   frontend-aware plugs should be written with thread safety in mind.
   """
-  enable_remote = True  # type: bool
+  enable_remote: bool = True
 
 
 @attr.s(slots=True, frozen=True)
