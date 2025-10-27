@@ -428,6 +428,9 @@ input[type='text'] {
 
 .htf-layout-widget-body {
   padding: 15px; }
+  .htf-layout-widget-body img {
+    width: 100%;
+    margin-bottom: 15px; }
   .htf-layout-widget-body + .htf-layout-widget-body {
     border-top: 1px solid #ccc; }
 
@@ -917,8 +920,4 @@ template {
 .u-text-color-error {
   color: #ff5d4e; }
 
-<<<<<<<< HEAD:openhtf/output/web_gui/dist/css/app.77df9acbfc40a7330df9.css
-/*# sourceMappingURL=app.77df9acbfc40a7330df9.css.map*/
-========
-/*# sourceMappingURL=app.3845abfadc1866a02240.css.map*/
->>>>>>>> 53630cc (Build new web_gui):openhtf/output/web_gui/dist/css/app.3845abfadc1866a02240.css
+/*# sourceMappingURL=app.85f04a152457bf891157.css.map*/
