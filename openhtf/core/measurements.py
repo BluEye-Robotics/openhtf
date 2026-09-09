@@ -818,7 +818,7 @@ class ImmutableMeasurement(object):
         name=measurement.name,
         value=value,
         units=measurement.units,
-        dimensions=measurement.dimensions,
+        dimensions=measurement.dimensions,  # pyrefly: ignore[bad-argument-type]
         outcome=measurement.outcome,
         docstring=measurement.docstring,
     )

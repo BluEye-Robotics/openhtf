@@ -296,7 +296,7 @@ class FakeTestApi(test_descriptor.TestApi):
         test_record=test_record.TestRecord('DUT', 'STATION'),
         user_defined_state={})
     super(FakeTestApi, self).__init__(  # pyrefly: ignore[missing-argument]
-        measurements={},
+        measurements={},  # pyrefly: ignore[bad-argument-type]
         running_phase_state=self.mock_phase_state,  # pyrefly: ignore[unexpected-keyword]
         running_test_state=self.mock_test_state)  # pyrefly: ignore[unexpected-keyword]
 

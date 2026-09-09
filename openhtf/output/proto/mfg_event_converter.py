@@ -612,6 +612,6 @@ def attachment_to_multidim_measurement(attachment, name=None):
       units=units_,
       dimensions=tuple(dimensions),  # pyrefly: ignore[unexpected-keyword]
       measured_value=measured_value,  # pyrefly: ignore[unexpected-keyword]
-      outcome=outcome,
+      outcome=outcome,  # pyrefly: ignore[bad-argument-type]
       marginal=marginal)
   return measurement

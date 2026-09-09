@@ -260,7 +260,7 @@ class TestExecutor(threads.KillableThread):
     except Exception:  # pylint: disable=broad-except
       # Record the equivalent failure outcome and exit early.
       self._last_outcome = phase_executor.PhaseExecutionOutcome(
-          phase_executor.ExceptionInfo(*sys.exc_info()))
+          phase_executor.ExceptionInfo(*sys.exc_info()))  # pyrefly: ignore[bad-argument-type]
       self._last_execution_unit = 'Plugs Initialization'
       return True
 
@@ -496,7 +496,7 @@ class TestExecutor(threads.KillableThread):
     """
     self.logger.debug('%s: Starting subtest.', subtest.name)
     subtest_rec = test_record.SubtestRecord(
-        name=subtest.name,
+        name=subtest.name,  # pyrefly: ignore[bad-argument-type]
         start_time_millis=util.time_millis(),
         outcome=test_record.SubtestOutcome.PASS)
     yield subtest_rec
@@ -643,7 +643,7 @@ class TestExecutor(threads.KillableThread):
       else:
         # Record the equivalent failure outcome and exit early.
         self._last_outcome = phase_executor.PhaseExecutionOutcome(
-            phase_executor.ExceptionInfo(*sys.exc_info()))
+            phase_executor.ExceptionInfo(*sys.exc_info()))  # pyrefly: ignore[bad-argument-type]
         self._last_execution_unit = str(diagnoser.name)
 
   def _execute_test_diagnosers(self) -> None:

@@ -313,7 +313,7 @@ class PhaseExecutor(object):
         self.logger.debug('Phase %s stopped due to a fault in run_if function.',
                           phase_desc.name)
         # Allow graceful termination
-        return PhaseExecutionOutcome(ExceptionInfo(*sys.exc_info())), None
+        return PhaseExecutionOutcome(ExceptionInfo(*sys.exc_info())), None  # pyrefly: ignore[bad-argument-type]
 
       if not run_phase:
         self.logger.debug('Phase %s skipped due to run_if returning falsey.',
@@ -396,7 +396,7 @@ class PhaseExecutor(object):
         raise InvalidPhaseResultError(
             'Checkpoint returned FAIL_SUBTEST, but subtest not running.')
     except Exception:  # pylint: disable=broad-except
-      outcome = PhaseExecutionOutcome(ExceptionInfo(*sys.exc_info()))
+      outcome = PhaseExecutionOutcome(ExceptionInfo(*sys.exc_info()))  # pyrefly: ignore[bad-argument-type]
 
     checkpoint_rec = test_record.CheckpointRecord.from_checkpoint(
         checkpoint, subtest_name, outcome, evaluated_millis)

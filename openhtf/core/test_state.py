@@ -768,7 +768,7 @@ class PhaseState(object):
                 'is already terminal; logging additional exception here.')
           else:
             self.phase_record.result = phase_executor.PhaseExecutionOutcome(
-                phase_executor.ExceptionInfo(*sys.exc_info()))
+                phase_executor.ExceptionInfo(*sys.exc_info()))  # pyrefly: ignore[bad-argument-type]
 
     # Set final values on the PhaseRecord.
     self.phase_record.measurements = self.measurements
@@ -872,7 +872,7 @@ class PhaseState(object):
             diagnoser.name)
       else:
         self.phase_record.result = phase_executor.PhaseExecutionOutcome(
-            phase_executor.ExceptionInfo(*sys.exc_info()))
+            phase_executor.ExceptionInfo(*sys.exc_info()))  # pyrefly: ignore[bad-argument-type]
 
   def _execute_phase_diagnosers(self) -> None:
     """Execute all the diagnosers for this phase."""

@@ -249,7 +249,7 @@ class TestTestApi(parameterized.TestCase):
       raise ValueError('Exception for unit testing.')
     except ValueError:
       phase_exe_outcome = phase_executor.PhaseExecutionOutcome(
-          phase_executor.ExceptionInfo(*sys.exc_info()))
+          phase_executor.ExceptionInfo(*sys.exc_info()))  # pyrefly: ignore[bad-argument-type]
       self.test_state.finalize_from_phase_outcome(phase_exe_outcome, 'MyPhase')
     self.assertEqual(self.test_state.test_record.outcome,
                      test_record.Outcome.ERROR)
