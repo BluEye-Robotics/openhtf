@@ -161,6 +161,8 @@ class WebGuiServer(threading.Thread):
         )
     self.server = tornado.httpserver.HTTPServer(self.application)
     self.server.add_sockets(self._sockets)
+    self._loop = asyncio.get_running_loop()
+    self._on_loop_ready(self._loop)
     await self._running.wait()
     await self.ts_watchdog_task
     await self.server.close_all_connections()
@@ -174,6 +176,9 @@ class WebGuiServer(threading.Thread):
   def _get_config(self):
     """Override this to configure the Angular app."""
     return {}
+
+  def _on_loop_ready(self, loop):
+    """Override to learn the asyncio loop the server runs on, once it does."""
 
   def run(self):
     """Runs the station server."""
