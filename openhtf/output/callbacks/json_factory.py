@@ -52,9 +52,16 @@ def convert_test_record_to_json(
   """
   as_dict = data.convert_to_base_types(test_rec, json_safe=(not allow_nan))
   if inline_attachments:
+    # The phase dicts are the record's own cached conversion, shared with
+    # every other consumer of the record (the station server publishes it
+    # after this callback), so the attachments go into copies.
+    phases = []
     for phase, original_phase in zip(as_dict['phases'], test_rec.phases):
+      phase = dict(phase, attachments=dict(phase['attachments']))
       for name, attachment in original_phase.attachments.items():
         phase['attachments'][name] = attachment
+      phases.append(phase)
+    as_dict = dict(as_dict, phases=phases)
   return as_dict
 
 
