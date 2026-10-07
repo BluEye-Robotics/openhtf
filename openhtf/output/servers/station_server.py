@@ -19,7 +19,6 @@ process. However, the dashboard server (dashboard_server.py) can be used to
 aggregate info from multiple station servers with a single frontend.
 """
 
-import asyncio
 import contextlib
 import itertools
 import json
@@ -234,7 +233,6 @@ class TestWatcher(threading.Thread):
 
   def run(self):
     """Call self._poll_for_update() in a loop and handle errors."""
-    asyncio.set_event_loop(asyncio.new_event_loop())
     while True:
       try:
         if not self._poll_for_update():
@@ -735,6 +733,11 @@ class StationServer(web_gui_server.WebGuiServer):
     return {
         'server_type': STATION_SERVER_TYPE,
     }
+
+  def _on_loop_ready(self, loop):
+    # Updates come from the test watchers and final records from the tests'
+    # own threads; both are sent from the server's loop.
+    StationPubSub.io_loop = loop
 
   def run(self) -> None:
     _LOG.info('Announcing station server via multicast on %s:%s',
