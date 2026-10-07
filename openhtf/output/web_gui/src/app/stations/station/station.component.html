@@ -53,10 +53,6 @@ limitations under the License.
   </div>
 
   <div [class.station--is-offline]="!isOnline">
-    <div class="htf-layout-widgets-container htf-layout-widgets-row">
-      <htf-user-input-plug [test]="activeTest"></htf-user-input-plug>
-    </div>
-
     <div class="htf-layout-widgets-container">
       <div class="htf-layout-widgets-left">
         @if (selectedTest !== null) {
@@ -70,16 +66,33 @@ limitations under the License.
                 type="button"
                 class="htf-rounded-button-grey"
                 (click)="onSelectTest(null)">
-                Return to current test
+                Return to current tests
               </button>
             </div>
           </div>
+          <htf-test-summary [test]="selectedTest"></htf-test-summary>
+          <htf-logs [test]="selectedTest"></htf-logs>
+          <htf-attachments [test]="selectedTest"></htf-attachments>
+          <htf-phase-list [test]="selectedTest"></htf-phase-list>
+        } @else {
+          <div
+            class="test-panels"
+            [class.test-panels--several]="activeTests.length > 1">
+            @for (test of activeTests; track test.testId) {
+              <div class="test-panel">
+                <htf-user-input-plug [test]="test"></htf-user-input-plug>
+                <htf-test-summary [test]="test"></htf-test-summary>
+                <htf-logs [test]="test"></htf-logs>
+                <htf-attachments [test]="test"></htf-attachments>
+                <htf-phase-list [test]="test"></htf-phase-list>
+              </div>
+            } @empty {
+              <div class="test-panel">
+                <htf-test-summary [test]="null"></htf-test-summary>
+              </div>
+            }
+          </div>
         }
-
-        <htf-test-summary [test]="activeTest"></htf-test-summary>
-        <htf-logs [test]="activeTest"></htf-logs>
-        <htf-attachments [test]="activeTest"></htf-attachments>
-        <htf-phase-list [test]="activeTest"></htf-phase-list>
       </div>
 
       <div class="htf-layout-widgets-right">

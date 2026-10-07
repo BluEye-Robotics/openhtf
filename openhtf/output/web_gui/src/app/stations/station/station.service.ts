@@ -51,7 +51,11 @@ export class StationService extends Subscription {
   private readonly phaseDescriptorPromise:
       {[testId: string]: Promise<Phase[]>} = {};
   private readonly testsById: {[testId: string]: TestState} = {};
-  private readonly testsByStation: {[stationHostPort: string]: TestState} = {};
+  // The tests currently shown for each station, by test id. A station may
+  // execute several tests at once; a test that has completed stays until the
+  // next test starts on the station.
+  private readonly testsByStation:
+      {[stationHostPort: string]: {[testId: string]: TestState}} = {};
   private messagesSubscription = null;
 
   constructor(
@@ -85,8 +89,23 @@ export class StationService extends Subscription {
     super.subscribeToUrl(stationUrl, retryMs, retryBackoff, retryMax);
   }
 
-  getTest(station: Station) {
-    return this.testsByStation[station.hostPort] || null;
+  /**
+   * The tests shown for a station, ordered by test name (a station with
+   * several fixtures names its tests after them), then by start time.
+   */
+  getTests(station: Station): TestState[] {
+    const tests = this.testsByStation[station.hostPort] || {};
+    return Object.values(tests).sort((a, b) => {
+      const byName = (a.name || '').localeCompare(b.name || '');
+      return byName || ((a.startTimeMillis || 0) - (b.startTimeMillis || 0));
+    });
+  }
+
+  /**
+   * The first test shown for a station, or null.
+   */
+  getTest(station: Station): TestState|null {
+    return this.getTests(station)[0] || null;
   }
 
   /**
@@ -198,7 +217,21 @@ export class StationService extends Subscription {
     }
     else {
       this.testsById[test.testId] = test;
-      this.testsByStation[station.hostPort] = test;
+      const tests = this.testsByStation[station.hostPort] || {};
+      // A new test replaces the tests that have completed; the ones still
+      // running stay next to it.
+      for (const testId of Object.keys(tests)) {
+        if (StationService.isCompleted(tests[testId])) {
+          delete tests[testId];
+        }
+      }
+      tests[test.testId] = test;
+      this.testsByStation[station.hostPort] = tests;
     }
+  }
+
+  private static isCompleted(test: TestState) {
+    return test.status !== TestStatus.waiting &&
+        test.status !== TestStatus.running;
   }
 }

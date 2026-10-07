@@ -40,6 +40,12 @@
   display: flex;
 }
 
+// A station showing several tests at once uses the whole window, so that as
+// many panels as the screen takes sit side by side.
+.htf-layout-container:has(.test-panels--several) {
+  max-width: none;
+}
+
 .htf-layout-container {
   @include htf-layout-centered;
 }
