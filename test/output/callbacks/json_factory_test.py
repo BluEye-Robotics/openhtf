@@ -34,19 +34,22 @@ class JsonFactoryTest(unittest.TestCase):
     outputs = {}
 
     def on_record(record):
-      buffer = io.StringIO()
+      buffer = io.BytesIO()
       json_factory.OutputToJSON(buffer, inline_attachments=True)(record)
-      outputs['json'] = buffer.getvalue()
+      outputs['json'] = buffer.getvalue().decode('utf-8')
       outputs['after'] = json.dumps(data.convert_to_base_types(record))
 
     test = openhtf.Test(attaching)
     test.add_output_callbacks(on_record)
     test.execute(test_start=lambda: 'dut')
 
+    def phase(record_dict):
+      return [p for p in record_dict['phases'] if p['name'] == 'attaching'][0]
+
     written = json.loads(outputs['json'])
-    self.assertIn('a.json', written['phases'][0]['attachments'])
+    self.assertIn('a.json', phase(written)['attachments'])
     after = json.loads(outputs['after'])
-    self.assertEqual(after['phases'][0]['attachments']['a.json']['mimetype'],
+    self.assertEqual(phase(after)['attachments']['a.json']['mimetype'],
                      'application/json')
 
 
