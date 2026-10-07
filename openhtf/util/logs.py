@@ -108,6 +108,7 @@ import sys
 import textwrap
 
 from openhtf.util import argv
+from openhtf.util import threads
 from openhtf.util import console_output
 from openhtf.util import functions
 
@@ -234,7 +235,13 @@ MAC_FILTER = MacAddressLogFilter()
 
 
 class TestUidFilter(logging.Filter):
-  """Exclude logs emitted by the record loggers of other tests."""
+  """Exclude logs that belong to other tests.
+
+  A record logger names its test. A framework log (any other logger under
+  'openhtf') belongs to the test whose thread emitted it, when the thread is
+  known to work for a test (see threads.set_test_uid); otherwise it is kept,
+  as before several tests could execute at once.
+  """
 
   def __init__(self, test_uid):
     super(TestUidFilter, self).__init__()
@@ -243,9 +250,10 @@ class TestUidFilter(logging.Filter):
   def filter(self, record):
     match = RECORD_LOGGER_RE.match(record.name)
 
-    # Keep framework logs.
     if not match:
-      return True
+      # A framework log: keep it unless the thread works for another test.
+      thread_uid = threads.get_test_uid()
+      return thread_uid is None or thread_uid == self.test_uid
 
     # Exclude logs emitted by the record loggers of other tests.
     return match.group('test_uid') == self.test_uid

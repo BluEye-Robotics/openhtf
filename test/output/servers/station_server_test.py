@@ -84,6 +84,18 @@ class ParallelTestsTest(unittest.TestCase):
         {dut: uid for dut, (_, uid) in self.records.items()}, uids)
     self.assertEqual(station_server._get_executing_tests(), [])
 
+  def test_framework_logs_stay_with_their_test(self):
+    self.release.set()
+    for thread in self.threads:
+      thread.join(timeout=10)
+    for dut, (record, _) in self.records.items():
+      messages = [log.message for log in record.log_records]
+      # Logged by the thread calling Test.execute() through a module logger.
+      self.assertIn('Test completed for %s, outputting now.' % dut, messages)
+      other = 'second' if dut == 'first' else 'first'
+      self.assertNotIn('Test completed for %s, outputting now.' % other,
+                       messages)
+
   def test_watchers_publish_each_test(self):
     published = {}
     done = threading.Event()

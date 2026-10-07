@@ -203,6 +203,7 @@ class TestExecutor(threads.KillableThread):
 
   def _thread_proc(self) -> None:
     """Handles one whole test from start to finish."""
+    threads.set_test_uid(self.uid)  # Framework logs from here are this test's.
     self._execution_finished.clear()
     try:
       # Top level steps required to run a single iteration of the Test.
