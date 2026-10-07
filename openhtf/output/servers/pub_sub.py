@@ -51,7 +51,14 @@ class PubSub(sockjs.tornado.SockJSConnection):
     with cls._lock:  # pylint: disable=not-context-manager
       for client in cls.subscribers:  # pylint: disable=not-an-iterable
         if (not client_filter) or client_filter(client):
-          client.send(message)
+          try:
+            client.send(message)
+          except Exception as error:  # pylint: disable=broad-except
+            # A client whose connection went away but whose session has not
+            # closed yet (for example a page being reloaded) must not stop
+            # the message from reaching the others, nor fill the records of
+            # the executing tests with tracebacks.
+            _LOG.debug('Could not send to a subscriber: %r', error)
 
   def on_open(self, info):
     _LOG.debug('New subscriber from %s.', info.ip)
