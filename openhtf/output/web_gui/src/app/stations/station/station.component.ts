@@ -55,6 +55,13 @@ export class StationComponent implements OnDestroy, OnInit {
     return this.stationService.getTest(this.selectedStation);
   }
 
+  /**
+   * Every test executing on the station (or lately completed), one panel each.
+   */
+  public get activeTests(): TestState[] {
+    return this.stationService.getTests(this.selectedStation);
+  }
+
   get dashboardEnabled() {
     return this.config.dashboardEnabled;
   }

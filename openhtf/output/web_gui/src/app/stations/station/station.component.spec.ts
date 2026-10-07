@@ -92,6 +92,10 @@ class MockStationService {
   unsubscribe = jasmine.createSpy('unsubscribe');
   test = null;
 
+  getTests() {
+    return this.test ? [this.test] : [];
+  }
+
   getTest() {
     return this.test;
   }

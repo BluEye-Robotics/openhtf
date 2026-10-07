@@ -38,3 +38,24 @@
     border: 0;
   }
 }
+
+// One panel per executing test. A single test takes the full width; several
+// sit side by side, as many per row as fit at the minimum width, and wrap
+// below that.
+$test-panel-min-width: 360px;
+
+.test-panels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $gutter-large;
+
+  > .test-panel {
+    flex: 1 1 100%;
+    min-width: 0;  // See https://css-tricks.com/flexbox-truncated-text/
+  }
+
+  &.test-panels--several > .test-panel {
+    flex: 1 1 $test-panel-min-width;
+    min-width: $test-panel-min-width;
+  }
+}
