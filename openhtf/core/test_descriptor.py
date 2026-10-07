@@ -44,6 +44,7 @@ from openhtf.core import phase_executor
 from openhtf.core import test_executor
 from openhtf.core import test_record as htf_test_record
 from openhtf.core import test_state
+from openhtf.util import threads
 from openhtf.util import configuration
 from openhtf.util import console_output
 from openhtf.util import logs
@@ -333,6 +334,8 @@ class Test(object):
           self._test_options,
           run_phases_with_profiling=profile_filename is not None)
 
+      # This thread's framework logs belong to this test until it finishes.
+      threads.set_test_uid(self.uid)
       _LOG.info('Executing test: %s', self.descriptor.code_info.name)
       self.TEST_INSTANCES[self.uid] = self
       self._executor.start()
@@ -395,6 +398,7 @@ class Test(object):
         del self.TEST_INSTANCES[self.uid]
         self._executor.close()
         self._executor = None
+        threads.set_test_uid(None)
 
     return final_state.test_record.outcome == htf_test_record.Outcome.PASS
 

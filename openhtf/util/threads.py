@@ -55,6 +55,24 @@ def loop(_=None, force=False):
   return real_loop
 
 
+# Which test's work a thread is doing, so that framework log lines (module
+# loggers, not the test's record logger) can be kept in that test's record
+# alone when several tests execute at once. Set by Test.execute() for the
+# calling thread and by TestExecutor for its own; KillableThreads inherit
+# it from the thread that creates them.
+_TEST_UID = threading.local()
+
+
+def set_test_uid(test_uid):
+  """Marks the current thread as working for the test with `test_uid`."""
+  _TEST_UID.uid = test_uid
+
+
+def get_test_uid():
+  """The execution UID the current thread works for, or None."""
+  return getattr(_TEST_UID, 'uid', None)
+
+
 class KillableThread(threading.Thread):
   """A thread object which handles exceptions and is able to be killed.
 
@@ -98,8 +116,10 @@ class KillableThread(threading.Thread):
     else:
       self._profiler = None
     self._logger = logger
+    self._test_uid = get_test_uid()
 
   def run(self):
+    set_test_uid(self._test_uid)
     try:
       with self._running_lock:
         if self._killed.is_set():
