@@ -221,7 +221,9 @@ class UserInput(base_plugs.FrontendAwareBasePlug):
         raise MultiplePromptsError(
             'Multiple concurrent prompts are not supported.')
       prompt_id = uuid.uuid4().hex
-      _LOG.debug('Displaying prompt (%s): "%s"%s', prompt_id, message,
+      # The plug's logger is the test's: with several tests executing at
+      # once, the prompt goes to this test's record only.
+      self.logger.debug('Displaying prompt (%s): "%s"%s', prompt_id, message,
                  ', Expects text input.' if text_input else '')
 
       self._response = None
@@ -270,7 +272,7 @@ class UserInput(base_plugs.FrontendAwareBasePlug):
       prompt_id: A string uniquely identifying the prompt.
       response: A string response to the given prompt.
     """
-    _LOG.debug('Responding to prompt (%s): "%s"', prompt_id, response)
+    self.logger.debug('Responding to prompt (%s): "%s"', prompt_id, response)
     with self._cond:
       if not (self._prompt and self._prompt.id == prompt_id):
         return
