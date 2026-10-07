@@ -33,6 +33,7 @@ import types
 from typing import Optional, Union
 
 import openhtf
+from openhtf.core import test_descriptor
 from openhtf.output.servers import pub_sub
 from openhtf.output.servers import web_gui_server
 from openhtf.util import configuration
@@ -74,38 +75,63 @@ CONF.declare('station_discovery_port')
 CONF.declare('station_discovery_ttl')
 
 
-def _get_executing_test():
-  """Get the currently executing test and its state.
+def _get_executing_tests():
+  """Get every executing test with its last known state.
 
-  When this function returns, it is not guaranteed that the returned test is
-  still running. A consumer of this function that wants to access test.state is
-  exposed to a race condition in which test.state may become None at any time
-  due to the test finishing. To address this, in addition to returning the test
-  itself, this function returns the last known test state.
+  When this function returns, it is not guaranteed that a returned test is
+  still running. A consumer that wants to access test.state is exposed to a
+  race condition in which test.state may become None at any time due to the
+  test finishing. To address this, in addition to returning the tests
+  themselves, this function returns each test's last known state.
 
   Returns:
-    test: The test that was executing when this function was called, or None.
-    test_state: The state of the executing test, or None.
+    A list of (test, test_state) pairs, in the order the tests started.
   """
-  tests = list(openhtf.Test.TEST_INSTANCES.values())
+  result = []
+  for test in list(openhtf.Test.TEST_INSTANCES.values()):
+    test_state = test.state
+    if test_state is not None:
+      # test_state is None if the executor was created but has not started
+      # running, or the test finished while this function was running.
+      result.append((test, test_state))
+  return result
 
+
+def _get_executing_test():
+  """Get the first executing test and its state, or (None, None).
+
+  Used where the station is summarised as a whole (multicast discovery). The
+  station server itself serves every executing test; see
+  _get_executing_tests().
+  """
+  tests = _get_executing_tests()
   if not tests:
     return None, None
+  return tests[0]
 
-  if len(tests) > 1:
-    _LOG.warning('Station server does not support multiple executing tests.')
 
-  test = tests[0]
-  test_state = test.state
-
-  if test_state is None:
-    # This is the case if:
-    # 1. The test executor was created but has not started running.
-    # 2. The test finished while this function was running, after we got the
-    #        list of tests but before we accessed the test state.
+def _get_test_by_uid(test_uid):
+  """Get the executing test with the given UID and its state, or (None, None)."""
+  try:
+    test = openhtf.Test.from_uid(test_uid)
+  except test_descriptor.UnrecognizedTestUidError:
     return None, None
-
+  test_state = test.state
+  if test_state is None:
+    return None, None
   return test, test_state
+
+
+def _execution_uid_for_record(test_record):
+  """The execution UID of the test whose record this is, if it is still known.
+
+  Output callbacks run before the test is removed from TEST_INSTANCES, so the
+  record passed to one can be matched to its test by identity.
+  """
+  for test, test_state in _get_executing_tests():
+    if test_state.test_record is test_record:
+      return test_state.execution_uid
+  return None
 
 
 def _test_state_from_record(test_record_dict, execution_uid=None):
@@ -152,25 +178,67 @@ def _wait_for_any_event(events, timeout_s):
 
 
 class StationWatcher(threading.Thread):
-  """Watches for changes in the state of the currently running OpenHTF test.
+  """Watches for executing tests and starts a TestWatcher for each.
 
-  The StationWatcher uses an event-based mechanism to detect changes in test
-  state. This means we rely on the OpenHTF framework to call notify_update()
-  when a change occurs. Authors of frontend-aware plugs must ensure that
-  notify_update() is called when a change occurs to that plug's state.
+  Several tests may execute at once in one process (each from its own thread
+  calling Test.execute()); every one gets its own watcher so that a change in
+  one test does not republish the others.
   """
   daemon = True
 
   def __init__(self, update_callback):
     super(StationWatcher, self).__init__(name=type(self).__name__)
     self._update_callback = update_callback
+    self._watchers = {}  # Execution UID -> TestWatcher.
+
+  def run(self):
+    while True:
+      try:
+        self._watch_new_tests()
+      except Exception as error:  # pylint: disable=broad-except
+        _LOG.exception('Error in station watcher: %s', error)
+      time.sleep(_WAIT_FOR_EXECUTING_TEST_POLL_S)
+
+  def _watch_new_tests(self):
+    for test, test_state in _get_executing_tests():
+      uid = test_state.execution_uid
+      watcher = self._watchers.get(uid)
+      if watcher is None or not watcher.is_alive():
+        watcher = TestWatcher(test, uid, self._update_callback)
+        self._watchers[uid] = watcher
+        watcher.start()
+    for uid, watcher in list(self._watchers.items()):
+      if not watcher.is_alive():
+        del self._watchers[uid]
+
+
+class TestWatcher(threading.Thread):
+  """Watches for changes in the state of one executing OpenHTF test.
+
+  The TestWatcher uses an event-based mechanism to detect changes in test
+  state. This means we rely on the OpenHTF framework to call notify_update()
+  when a change occurs. Authors of frontend-aware plugs must ensure that
+  notify_update() is called when a change occurs to that plug's state.
+
+  The thread ends when the test finishes.
+  """
+  daemon = True
+
+  def __init__(self, test, execution_uid, update_callback):
+    super(TestWatcher, self).__init__(
+        name='%s-%s' % (type(self).__name__, execution_uid))
+    self._test = test
+    self._execution_uid = execution_uid
+    self._update_callback = update_callback
+    self._throttle_s = float(CONF.frontend_throttle_s)
 
   def run(self):
     """Call self._poll_for_update() in a loop and handle errors."""
     asyncio.set_event_loop(asyncio.new_event_loop())
     while True:
       try:
-        self._poll_for_update()
+        if not self._poll_for_update():
+          return
       except RuntimeError as error:
         # Note that because logging triggers a call to notify_update(), by
         # logging a message, we automatically retry publishing the update
@@ -179,24 +247,33 @@ class StationWatcher(threading.Thread):
           # These errors occur occasionally and it is infeasible to get rid of
           # them entirely unless data.convert_to_base_types() is made
           # thread-safe. Ignore the error and retry quickly.
-          _LOG.debug('Ignoring (probably harmless) error in station watcher: '
+          _LOG.debug('Ignoring (probably harmless) error in test watcher: '
                      '`dictionary changed size during iteration`.')
           time.sleep(0.1)
         else:
-          _LOG.exception('Error in station watcher: %s', error)
+          _LOG.exception('Error in test watcher: %s', error)
           time.sleep(1)
       except Exception as error:  # pylint: disable=broad-except
-        _LOG.exception('Error in station watcher: %s', error)
+        _LOG.exception('Error in test watcher: %s', error)
         time.sleep(1)
 
-  @functions.call_at_most_every(float(CONF.frontend_throttle_s))
-  def _poll_for_update(self):
-    """Call the callback with the current test state, then wait for a change."""
-    test, test_state = _get_executing_test()
+  def _current_state(self):
+    """The test's state while it is still the execution we watch, else None."""
+    test_state = self._test.state
+    if test_state is None or test_state.execution_uid != self._execution_uid:
+      return None
+    return test_state
 
-    if test is None:
-      time.sleep(_WAIT_FOR_EXECUTING_TEST_POLL_S)
-      return
+  def _poll_for_update(self):
+    """Publish the test state, then wait for a change.
+
+    Returns:
+      False once the test has finished, True to keep watching.
+    """
+    started = time.monotonic()
+    test_state = self._current_state()
+    if test_state is None:
+      return False
 
     state_dict, event = self._to_dict_with_event(test_state)
     self._update_callback(state_dict)
@@ -208,12 +285,17 @@ class StationWatcher(threading.Thread):
     ]
     events = [event] + plug_events
 
-    # Wait for the test state or a plug state to change, or for the previously
-    # executing test to finish.
+    # Wait for the test state or a plug state to change, or for the test to
+    # finish.
     while not _wait_for_any_event(events, _CHECK_FOR_FINISHED_TEST_POLL_S):
-      new_test, _ = _get_executing_test()
-      if test != new_test:
-        break
+      if self._current_state() is None:
+        return False
+
+    # Min wait time between successive updates to the frontend.
+    remaining = self._throttle_s - (time.monotonic() - started)
+    if remaining > 0:
+      time.sleep(remaining)
+    return True
 
   @classmethod
   def _to_dict_with_event(cls, test_state):
@@ -267,26 +349,34 @@ class DashboardPubSub(sockjs.tornado.SockJSConnection):
 class StationPubSub(pub_sub.PubSub):
   """WebSocket endpoint for test updates.
 
-  The endpoint provides information about the test that is currently running
-  with this StationServer. Two types of message are sent: 'update' and 'record',
-  where 'record' indicates the final state of a test.
+  The endpoint provides information about every test that is currently
+  running with this StationServer. Two types of message are sent: 'update'
+  and 'record', where 'record' indicates the final state of a test. Each
+  message names its test with 'test_uid'.
   """
-  _lock = threading.Lock()  # Required by pub_sub.PubSub.  # pyrefly: ignore[bad-override]
-  subscribers = set()  # Required by pub_sub.PubSub.  # pyrefly: ignore[bad-override]
+  _lock = threading.Lock()  # Required by pub_sub.PubSub.
+  subscribers = set()  # Required by pub_sub.PubSub.
   _last_execution_uid = None
-  _last_message = None
+  _last_messages = {}  # Execution UID -> last 'update' message.
 
   @classmethod
   def publish_test_record(cls, test_record):
+    execution_uid = _execution_uid_for_record(test_record)
+    if execution_uid is None:
+      # The test is already gone; assume the record is from the last test we
+      # published, as before tests could run side by side.
+      execution_uid = cls._last_execution_uid
     test_record_dict = data.convert_to_base_types(test_record)
-    test_state_dict = _test_state_from_record(test_record_dict,
-                                              cls._last_execution_uid)
+    test_state_dict = _test_state_from_record(test_record_dict, execution_uid)
     cls._publish_test_state(test_state_dict, 'record')
+    cls._last_messages.pop(execution_uid, None)
 
   @classmethod
   def publish_update(cls, test_state_dict):
-    """Publish the state of the currently executing test."""
+    """Publish the state of an executing test."""
     cls._publish_test_state(test_state_dict, 'update')
+    cls._last_messages[test_state_dict['execution_uid']] = cls._last_message_for(
+        test_state_dict)
 
   @classmethod
   def _publish_test_state(cls, test_state_dict, message_type):
@@ -297,20 +387,29 @@ class StationPubSub(pub_sub.PubSub):
     }
     super(StationPubSub, cls).publish(message)
     cls._last_execution_uid = test_state_dict['execution_uid']
-    cls._last_message = message
+
+  @classmethod
+  def _last_message_for(cls, test_state_dict):
+    return {
+        'state': test_state_dict,
+        'test_uid': test_state_dict['execution_uid'],
+        'type': 'update',
+    }
 
   def on_subscribe(self, info):
-    """Send the more recent test state to new subscribers when they connect.
+    """Send the most recent state of every executing test to new subscribers.
 
-    This is skipped if the test has already completed.
+    Tests that have already completed are skipped.
 
     Args:
       info: Subscription info.
     """
-    test, _ = _get_executing_test()
-
-    if self._last_message is not None and test is not None:
-      self.send(self._last_message)
+    executing = {
+        test_state.execution_uid for _, test_state in _get_executing_tests()
+    }
+    for execution_uid, message in list(self._last_messages.items()):
+      if execution_uid in executing:
+        self.send(message)
 
 
 class BaseTestHandler(web_gui_server.CorsRequestHandler):
@@ -318,9 +417,9 @@ class BaseTestHandler(web_gui_server.CorsRequestHandler):
 
   def get_test(self, test_uid):
     """Get the specified test. Write 404 and return None if it is not found."""
-    test, test_state = _get_executing_test()
+    test, test_state = _get_test_by_uid(test_uid)
 
-    if test is None or str(test.uid) != test_uid:
+    if test is None:
       self.write('Unknown test UID %s' % test_uid)
       self.set_status(404)
       return None, None
@@ -557,9 +656,11 @@ class StationMulticast(multicast.MulticastListener):
 
 
 class StationServer(web_gui_server.WebGuiServer):
-  """Provides endpoints for interacting with an OpenHTF test.
+  """Provides endpoints for interacting with the executing OpenHTF tests.
 
-  Also serves an Angular frontend that interfaces with those endpoints.
+  Also serves an Angular frontend that interfaces with those endpoints. Any
+  number of tests may execute at once in the process (each from its own
+  thread); the frontend shows one panel per test.
 
   Can be used as a context manager to ensure the server is stopped cleanly:
 
