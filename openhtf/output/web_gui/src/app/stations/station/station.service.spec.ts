@@ -60,7 +60,8 @@ const mockStation2 = new Station({
  * Mock websocket data.
  */
 
-const createMockTestStateResponse = (testId: string, status: string) => {
+const createMockTestStateResponse =
+    (testId: string, status: string, metadata: {} = {}) => {
   return {
     state: {
       plugs: {},
@@ -72,7 +73,7 @@ const createMockTestStateResponse = (testId: string, status: string) => {
       status,
       test_record: {
         log_records: [],
-        metadata: {},
+        metadata,
         outcome: status === 'COMPLETED' ? 'PASS' : undefined,
         phases: [{
           attachments: {},
@@ -118,7 +119,8 @@ const mockHttpService = {
 };
 
 const mockConfig = {
-  dashboardEnabled: true
+  dashboardEnabled: true,
+  hidePassedAfterMs: null as number | null,
 };
 
 const mockFlashMessageService = {
@@ -228,6 +230,85 @@ describe('station service', () => {
 
        // Expect station service to unsubscribe from the first station.
        expect(mockSockJsInstance.close).toHaveBeenCalledWith();
+     }));
+
+  it('should drop a transient test as soon as it completes', fakeAsync(() => {
+       stationService.subscribe(mockStation);
+       connectSuccessfully();
+       const start = {test_name: 'Battery station', transient: true};
+       receiveMockMessage(
+           createMockTestStateResponse('start', 'RUNNING', start));
+       receiveMockMessage(createMockTestStateResponse(
+           'slot-1', 'RUNNING', {test_name: 'Slot 1'}));
+       tick();
+       expect(stationService.getTests(mockStation).map(t => t.name))
+           .toEqual(['Battery station', 'Slot 1']);
+
+       mockHistoryService.prependItemFromTestState.calls.reset();
+       receiveMockMessage(
+           createMockTestStateResponse('start', 'COMPLETED', start));
+       receiveMockMessage({
+         ...createMockTestStateResponse('start', 'COMPLETED', start),
+         type: 'record',
+       });
+       tick();
+       expect(stationService.getTests(mockStation).map(t => t.testId))
+           .toEqual(['slot-1']);
+       // It tested nothing: not in the history either.
+       expect(mockHistoryService.prependItemFromTestState).not.toHaveBeenCalled();
+     }));
+
+  it('should keep a completed test until a test of its name starts',
+     fakeAsync(() => {
+       stationService.subscribe(mockStation);
+       connectSuccessfully();
+       const slot1 = {test_name: 'Slot 1'};
+       receiveMockMessage(createMockTestStateResponse('a', 'RUNNING', slot1));
+       receiveMockMessage(createMockTestStateResponse('a', 'COMPLETED', slot1));
+       receiveMockMessage(createMockTestStateResponse(
+           'b', 'RUNNING', {test_name: 'Slot 2'}));
+       tick();
+       // Another fixture starting leaves slot 1's result in view.
+       expect(stationService.getTests(mockStation).map(t => t.testId))
+           .toEqual(['a', 'b']);
+
+       receiveMockMessage(createMockTestStateResponse('c', 'RUNNING', slot1));
+       tick();
+       expect(stationService.getTests(mockStation).map(t => t.testId))
+           .toEqual(['c', 'b']);
+     }));
+
+  it('should take a passed test away after the configured delay',
+     fakeAsync(() => {
+       mockConfig.hidePassedAfterMs = 120000;
+       stationService.subscribe(mockStation);
+       connectSuccessfully();
+       const slot1 = {test_name: 'Slot 1'};
+       const slot2 = {test_name: 'Slot 2'};
+       receiveMockMessage(createMockTestStateResponse('a', 'RUNNING', slot1));
+       receiveMockMessage(createMockTestStateResponse('b', 'RUNNING', slot2));
+       receiveMockMessage(createMockTestStateResponse('a', 'COMPLETED', slot1));
+       const failed = createMockTestStateResponse('b', 'COMPLETED', slot2);
+       failed.state.test_record.outcome = 'FAIL';
+       receiveMockMessage(failed);
+       tick(119000);
+       expect(stationService.getTests(mockStation).map(t => t.testId))
+           .toEqual(['a', 'b']);
+
+       tick(1000);
+       // The pass is gone; the failure stays for the operator.
+       expect(stationService.getTests(mockStation).map(t => t.testId))
+           .toEqual(['b']);
+       mockConfig.hidePassedAfterMs = null;
+     }));
+
+  it('should keep a passed test without the delay configured', fakeAsync(() => {
+       stationService.subscribe(mockStation);
+       connectSuccessfully();
+       receiveMockMessage(createMockTestStateResponse('a', 'RUNNING'));
+       receiveMockMessage(createMockTestStateResponse('a', 'COMPLETED'));
+       tick(3600000);
+       expect(stationService.getTests(mockStation).length).toBe(1);
      }));
 
   it('should get pending phases', fakeAsync(() => {

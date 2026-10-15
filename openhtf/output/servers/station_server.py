@@ -674,11 +674,18 @@ class StationServer(web_gui_server.WebGuiServer):
       if server:
         test.add_output_callbacks(server.publish_final_state)
       test.execute()
+
+  With several tests at once, `hide_passed_after_s` makes the frontend take a
+  passed test's panel away that many seconds after it completes; a test that
+  did not pass keeps its panel until a test of its name starts again.
   """
 
   def __init__(
       self,
-      history_path: Optional[Union[str, bytes, os.PathLike]] = None) -> None:
+      history_path: Optional[Union[str, bytes, os.PathLike]] = None,
+      hide_passed_after_s: Optional[float] = None) -> None:
+    # Read by _get_config() while the base class sets up its routes.
+    self._hide_passed_after_s = hide_passed_after_s
     # Disable tornado's logging.
     # TODO(kenadia): Enable these logs if verbosity flag is at least -vvv.
     #     I think this will require changing how StoreRepsInModule works.
@@ -732,6 +739,7 @@ class StationServer(web_gui_server.WebGuiServer):
   def _get_config(self):
     return {
         'server_type': STATION_SERVER_TYPE,
+        'hide_passed_after_s': self._hide_passed_after_s,
     }
 
   def _on_loop_ready(self, loop):
