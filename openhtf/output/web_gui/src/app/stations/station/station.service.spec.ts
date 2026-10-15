@@ -243,11 +243,18 @@ describe('station service', () => {
        expect(stationService.getTests(mockStation).map(t => t.name))
            .toEqual(['Battery station', 'Slot 1']);
 
+       mockHistoryService.prependItemFromTestState.calls.reset();
        receiveMockMessage(
            createMockTestStateResponse('start', 'COMPLETED', start));
+       receiveMockMessage({
+         ...createMockTestStateResponse('start', 'COMPLETED', start),
+         type: 'record',
+       });
        tick();
        expect(stationService.getTests(mockStation).map(t => t.testId))
            .toEqual(['slot-1']);
+       // It tested nothing: not in the history either.
+       expect(mockHistoryService.prependItemFromTestState).not.toHaveBeenCalled();
      }));
 
   it('should keep a completed test until a test of its name starts',
