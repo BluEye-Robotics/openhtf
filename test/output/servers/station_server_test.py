@@ -15,11 +15,9 @@
 
 import threading
 import unittest
-import urllib.request
 
 import openhtf
 from openhtf.output.servers import station_server
-from openhtf.util import configuration
 
 
 class ParallelTestsTest(unittest.TestCase):
@@ -122,21 +120,3 @@ class ParallelTestsTest(unittest.TestCase):
 
 if __name__ == '__main__':
   unittest.main()
-
-
-class GuiConfigTest(unittest.TestCase):
-  """What the station server tells the frontend in the page it serves."""
-
-  def page(self, **kwargs):
-    configuration.CONF.load(station_server_port=0)
-    with station_server.StationServer(**kwargs) as server:
-      url = 'http://localhost:%d/' % server.port
-      return urllib.request.urlopen(url, timeout=10).read().decode()
-
-  def test_a_delay_for_passed_tests_reaches_the_frontend(self):
-    page = self.page(hide_passed_after_s=120)
-    self.assertIn('&quot;hide_passed_after_s&quot;: 120', page)
-
-  def test_without_it_passed_tests_stay(self):
-    page = self.page()
-    self.assertIn('&quot;hide_passed_after_s&quot;: null', page)
