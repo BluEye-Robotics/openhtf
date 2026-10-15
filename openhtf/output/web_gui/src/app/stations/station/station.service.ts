@@ -53,7 +53,9 @@ export class StationService extends Subscription {
   private readonly testsById: {[testId: string]: TestState} = {};
   // The tests currently shown for each station, by test id. A station may
   // execute several tests at once; a test that has completed stays until the
-  // next test starts on the station.
+  // next test of the same name starts on the station, so each fixture keeps
+  // its result until it starts again. A transient test goes as soon as it
+  // completes.
   private readonly testsByStation:
       {[stationHostPort: string]: {[testId: string]: TestState}} = {};
   private messagesSubscription = null;
@@ -214,20 +216,32 @@ export class StationService extends Subscription {
         }
       }
       Object.assign(oldTest, test);
+      if (oldTest.transient && StationService.isCompleted(oldTest)) {
+        this.forget(station, oldTest.testId);
+      }
     }
     else {
       this.testsById[test.testId] = test;
       const tests = this.testsByStation[station.hostPort] || {};
-      // A new test replaces the tests that have completed; the ones still
-      // running stay next to it.
+      // A new test replaces the completed tests of its name; the ones still
+      // running, and other fixtures' results, stay next to it.
       for (const testId of Object.keys(tests)) {
-        if (StationService.isCompleted(tests[testId])) {
+        if (StationService.isCompleted(tests[testId]) &&
+            tests[testId].name === test.name) {
           delete tests[testId];
         }
       }
       tests[test.testId] = test;
       this.testsByStation[station.hostPort] = tests;
+      if (test.transient && StationService.isCompleted(test)) {
+        this.forget(station, test.testId);
+      }
     }
+  }
+
+  private forget(station: Station, testId: string) {
+    const tests = this.testsByStation[station.hostPort] || {};
+    delete tests[testId];
   }
 
   private static isCompleted(test: TestState) {
