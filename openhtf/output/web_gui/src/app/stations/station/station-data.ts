@@ -90,7 +90,11 @@ export interface RawLogRecord {
   timestamp_millis: number;
 }
 
-export interface RawMetadata { test_name: string; }
+export interface RawMetadata {
+  test_name: string;
+  // Set by `htf.Test(..., transient=True)`: see TestState.transient.
+  transient?: boolean;
+}
 
 export interface RawPhase {
   attachments: {[name: string]: RawAttachment};
@@ -176,6 +180,7 @@ export function makeTest(
     station,
     status,
     testId,
+    transient: rawState.test_record.metadata.transient === true,
   });
 }
 
