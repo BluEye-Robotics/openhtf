@@ -124,7 +124,8 @@ export class StationService extends Subscription {
   private parseResponse(response: StationApiResponse, station: Station) {
     const testState =
         makeTest(response.state, response.test_uid, null, station);
-    if (response.type === 'record') {
+    // A transient test tested nothing: it stays out of the history.
+    if (response.type === 'record' && !testState.transient) {
       this.historyService.prependItemFromTestState(station, testState);
     }
     return testState;
