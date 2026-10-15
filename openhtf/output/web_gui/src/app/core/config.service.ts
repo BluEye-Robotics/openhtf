@@ -27,12 +27,16 @@ const DASHBOARD_SERVER_TYPE: dashboard = 'dashboard';
 interface Config {
   server_type?: dashboard|station;
   history_from_disk_enabled?: boolean;
+  // A station server's: take a passed test's panel away this many seconds
+  // after it completes (null: keep it until a test of its name starts).
+  hide_passed_after_s?: number|null;
 }
 
 // We will usually fall back to the default config during development.
 const defaultConfig: Config = {
   server_type: DASHBOARD_SERVER_TYPE,
   history_from_disk_enabled: false,
+  hide_passed_after_s: null,
 };
 
 @Injectable()
@@ -60,5 +64,11 @@ export class ConfigService {
       throw new Error('Attempted to access config before it was initialized.');
     }
     return this.config.server_type === DASHBOARD_SERVER_TYPE;
+  }
+
+  /** Milliseconds after which a passed test's panel goes, or null. */
+  get hidePassedAfterMs(): number|null {
+    const seconds = this.config.hide_passed_after_s;
+    return typeof seconds === 'number' && seconds >= 0 ? seconds * 1000 : null;
   }
 }
