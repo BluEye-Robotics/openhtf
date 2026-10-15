@@ -119,8 +119,7 @@ const mockHttpService = {
 };
 
 const mockConfig = {
-  dashboardEnabled: true,
-  hidePassedAfterMs: null as number | null,
+  dashboardEnabled: true
 };
 
 const mockFlashMessageService = {
@@ -276,39 +275,6 @@ describe('station service', () => {
        tick();
        expect(stationService.getTests(mockStation).map(t => t.testId))
            .toEqual(['c', 'b']);
-     }));
-
-  it('should take a passed test away after the configured delay',
-     fakeAsync(() => {
-       mockConfig.hidePassedAfterMs = 120000;
-       stationService.subscribe(mockStation);
-       connectSuccessfully();
-       const slot1 = {test_name: 'Slot 1'};
-       const slot2 = {test_name: 'Slot 2'};
-       receiveMockMessage(createMockTestStateResponse('a', 'RUNNING', slot1));
-       receiveMockMessage(createMockTestStateResponse('b', 'RUNNING', slot2));
-       receiveMockMessage(createMockTestStateResponse('a', 'COMPLETED', slot1));
-       const failed = createMockTestStateResponse('b', 'COMPLETED', slot2);
-       failed.state.test_record.outcome = 'FAIL';
-       receiveMockMessage(failed);
-       tick(119000);
-       expect(stationService.getTests(mockStation).map(t => t.testId))
-           .toEqual(['a', 'b']);
-
-       tick(1000);
-       // The pass is gone; the failure stays for the operator.
-       expect(stationService.getTests(mockStation).map(t => t.testId))
-           .toEqual(['b']);
-       mockConfig.hidePassedAfterMs = null;
-     }));
-
-  it('should keep a passed test without the delay configured', fakeAsync(() => {
-       stationService.subscribe(mockStation);
-       connectSuccessfully();
-       receiveMockMessage(createMockTestStateResponse('a', 'RUNNING'));
-       receiveMockMessage(createMockTestStateResponse('a', 'COMPLETED'));
-       tick(3600000);
-       expect(stationService.getTests(mockStation).length).toBe(1);
      }));
 
   it('should get pending phases', fakeAsync(() => {

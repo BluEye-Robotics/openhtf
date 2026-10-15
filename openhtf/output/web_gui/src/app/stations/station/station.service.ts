@@ -54,14 +54,11 @@ export class StationService extends Subscription {
   // The tests currently shown for each station, by test id. A station may
   // execute several tests at once; a test that has completed stays until the
   // next test of the same name starts on the station, so each fixture keeps
-  // its result until it starts again; with `hide_passed_after_s` in the
-  // config a passed one goes after that delay. A transient test goes as soon
-  // as it completes.
+  // its result until it starts again. A transient test goes as soon as it
+  // completes.
   private readonly testsByStation:
       {[stationHostPort: string]: {[testId: string]: TestState}} = {};
   private messagesSubscription = null;
-  // Passed tests whose panels are due to go (see hideLaterIfPassed).
-  private readonly hidingLater = new Set<string>();
 
   constructor(
       private config: ConfigService, private flashMessage: FlashMessageService,
@@ -223,7 +220,6 @@ export class StationService extends Subscription {
       if (oldTest.transient && StationService.isCompleted(oldTest)) {
         this.forget(station, oldTest.testId);
       }
-      this.hideLaterIfPassed(station, oldTest);
     }
     else {
       this.testsById[test.testId] = test;
@@ -241,25 +237,7 @@ export class StationService extends Subscription {
       if (test.transient && StationService.isCompleted(test)) {
         this.forget(station, test.testId);
       }
-      this.hideLaterIfPassed(station, test);
     }
-  }
-
-  /**
-   * With `hide_passed_after_s` set, a passed test's panel goes after that
-   * delay; one that failed, errored or was aborted stays for the operator.
-   */
-  private hideLaterIfPassed(station: Station, test: TestState) {
-    const delayMs = this.config.hidePassedAfterMs;
-    if (delayMs === null || test.status !== TestStatus.pass ||
-        this.hidingLater.has(test.testId)) {
-      return;
-    }
-    this.hidingLater.add(test.testId);
-    setTimeout(() => {
-      this.hidingLater.delete(test.testId);
-      this.forget(station, test.testId);
-    }, delayMs);
   }
 
   private forget(station: Station, testId: string) {
