@@ -94,6 +94,8 @@ export interface RawMetadata {
   test_name: string;
   // Set by `htf.Test(..., transient=True)`: see TestState.transient.
   transient?: boolean;
+  // Set by `htf.Test(..., fixture='Slot 3')`: see TestState.fixture.
+  fixture?: string;
 }
 
 export interface RawPhase {
@@ -181,6 +183,9 @@ export function makeTest(
     status,
     testId,
     transient: rawState.test_record.metadata.transient === true,
+    fixture: typeof rawState.test_record.metadata.fixture === 'string' ?
+        rawState.test_record.metadata.fixture :
+        null,
   });
 }
 

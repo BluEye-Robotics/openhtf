@@ -277,6 +277,43 @@ describe('station service', () => {
            .toEqual(['c', 'b']);
      }));
 
+  it('should order and replace tests by fixture when they have one',
+     fakeAsync(() => {
+       stationService.subscribe(mockStation);
+       connectSuccessfully();
+       // The test's name is the procedure; the slot is its fixture.
+       const slot2Full = {test_name: 'Full cycle', fixture: 'Slot 2'};
+       const slot1Short = {test_name: 'Short cycle', fixture: 'Slot 1'};
+       const slot2Short = {test_name: 'Short cycle', fixture: 'Slot 2'};
+       receiveMockMessage(createMockTestStateResponse('a', 'RUNNING', slot2Full));
+       receiveMockMessage(createMockTestStateResponse('b', 'RUNNING', slot1Short));
+       tick();
+       // Ordered by fixture, not by name ('Full' < 'Short').
+       expect(stationService.getTests(mockStation).map(t => t.testId))
+           .toEqual(['b', 'a']);
+       expect(stationService.getTests(mockStation)[0].fixture).toEqual('Slot 1');
+
+       // Slot 2's finished full cycle stays while slot 1 runs, and goes when
+       // slot 2 starts again, whatever procedure it runs then.
+       receiveMockMessage(createMockTestStateResponse('a', 'COMPLETED', slot2Full));
+       receiveMockMessage(createMockTestStateResponse('c', 'RUNNING', slot2Short));
+       tick();
+       expect(stationService.getTests(mockStation).map(t => t.testId))
+           .toEqual(['b', 'c']);
+     }));
+
+  it('should keep replacing by name for tests without a fixture', fakeAsync(() => {
+       stationService.subscribe(mockStation);
+       connectSuccessfully();
+       const t = {test_name: 'GP-Flasher'};
+       receiveMockMessage(createMockTestStateResponse('a', 'RUNNING', t));
+       receiveMockMessage(createMockTestStateResponse('a', 'COMPLETED', t));
+       receiveMockMessage(createMockTestStateResponse('b', 'RUNNING', t));
+       tick();
+       expect(stationService.getTests(mockStation).map(x => x.testId)).toEqual(['b']);
+       expect(stationService.getTests(mockStation)[0].fixture).toBeNull();
+     }));
+
   it('should get pending phases', fakeAsync(() => {
        mockHttpService.get.calls.reset();
 

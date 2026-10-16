@@ -53,9 +53,9 @@ export class StationService extends Subscription {
   private readonly testsById: {[testId: string]: TestState} = {};
   // The tests currently shown for each station, by test id. A station may
   // execute several tests at once; a test that has completed stays until the
-  // next test of the same name starts on the station, so each fixture keeps
-  // its result until it starts again. A transient test goes as soon as it
-  // completes.
+  // next test in the same place (its fixture, or else its name) starts, so
+  // each fixture keeps its result until it starts again. A transient test
+  // goes as soon as it completes.
   private readonly testsByStation:
       {[stationHostPort: string]: {[testId: string]: TestState}} = {};
   private messagesSubscription = null;
@@ -92,15 +92,21 @@ export class StationService extends Subscription {
   }
 
   /**
-   * The tests shown for a station, ordered by test name (a station with
-   * several fixtures names its tests after them), then by start time.
+   * The tests shown for a station, ordered by fixture (or, without one, by
+   * test name: a station with several fixtures may name its tests after
+   * them), then by start time.
    */
   getTests(station: Station): TestState[] {
     const tests = this.testsByStation[station.hostPort] || {};
     return Object.values(tests).sort((a, b) => {
-      const byName = (a.name || '').localeCompare(b.name || '');
-      return byName || ((a.startTimeMillis || 0) - (b.startTimeMillis || 0));
+      const byPlace = StationService.place(a).localeCompare(StationService.place(b));
+      return byPlace || ((a.startTimeMillis || 0) - (b.startTimeMillis || 0));
     });
+  }
+
+  /** Where a test runs: its fixture, or its name when it has none. */
+  private static place(test: TestState): string {
+    return test.fixture || test.name || '';
   }
 
   /**
@@ -224,11 +230,11 @@ export class StationService extends Subscription {
     else {
       this.testsById[test.testId] = test;
       const tests = this.testsByStation[station.hostPort] || {};
-      // A new test replaces the completed tests of its name; the ones still
-      // running, and other fixtures' results, stay next to it.
+      // A new test replaces the completed tests of its place (fixture, or
+      // name); the ones still running, and other places' results, stay.
       for (const testId of Object.keys(tests)) {
         if (StationService.isCompleted(tests[testId]) &&
-            tests[testId].name === test.name) {
+            StationService.place(tests[testId]) === StationService.place(test)) {
           delete tests[testId];
         }
       }

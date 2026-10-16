@@ -17,7 +17,7 @@ limitations under the License.
 @if (test) {
   <div class="htf-layout-widget">
     <div class="htf-layout-widget-header">
-      <div>Current test: {{ test.name }}</div>
+      <div>Current test: {{ test.fixture ? test.fixture + ' · ' : '' }}{{ test.name }}</div>
       @if (test.startTimeMillis) {
         <div>
           &nbsp;{{ test | elapsedTime:'(%s)' }}

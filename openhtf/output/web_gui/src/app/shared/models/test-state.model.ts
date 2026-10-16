@@ -56,6 +56,10 @@ export class TestState {
   // which fixture to start next: its panel goes as soon as it completes, and
   // it is not added to the history.
   transient?: boolean;
+  // Where on the station the test runs, when the station has several places
+  // ('Slot 3'), so that the test's name can be its procedure: panels are
+  // titled, ordered and replaced by fixture rather than by name.
+  fixture?: string|null;
 
   // Using the class as the interface for its own constructor allows us to call
   // the constructor in named-argument style.
