@@ -86,6 +86,13 @@
   margin-bottom: $gutter-large;
 }
 
+// In test mode (AppComponent's htf-test-mode class) every panel carries the
+// test mode colour along its top edge.
+.htf-test-mode .htf-layout-widget {
+  border-color: $test-amber;
+  border-top-width: 4px;
+}
+
 .htf-layout-header {
   align-items: center;
   display: flex;

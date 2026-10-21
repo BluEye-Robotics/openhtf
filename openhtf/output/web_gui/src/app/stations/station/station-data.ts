@@ -94,6 +94,9 @@ export interface RawMetadata {
   test_name: string;
   // Set by `htf.Test(..., transient=True)`: see TestState.transient.
   transient?: boolean;
+  // The station's config as the run took it; `production` is the station's
+  // Production/Test mode when the run started (see TestState.production).
+  config?: {production?: boolean};
 }
 
 export interface RawPhase {
@@ -181,6 +184,11 @@ export function makeTest(
     status,
     testId,
     transient: rawState.test_record.metadata.transient === true,
+    // A run takes the station's mode when it starts (its DUT entered): only
+    // from then on does its config say.
+    production: rawState.test_record.start_time_millis ?
+        rawState.test_record.metadata.config?.production !== false :
+        null,
   });
 }
 

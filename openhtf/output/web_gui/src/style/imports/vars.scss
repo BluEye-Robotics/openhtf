@@ -34,6 +34,13 @@ $theme-white: #fff;
 $theme-yellow: #ffe54d;
 $tooltip-background: rgba(0, 0, 0, .7);
 
+// Test mode: the station's runs do not count as production. Amber on near
+// black ink, like hazard tape, so it cannot pass for the usual blue-grey.
+$test-amber: #f5a524;
+$test-amber-light: #f9c46b;
+$test-ink: #2b1d05;
+$test-tint: #fff4df;
+
 // Font sizes.
 
 $font-size-very-large: 20px;

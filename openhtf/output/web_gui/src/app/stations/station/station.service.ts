@@ -20,7 +20,7 @@
 
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, of, from } from 'rxjs';
+import { EMPTY, firstValueFrom, Observable, of, from } from 'rxjs';
 import { map, catchError, mergeMap } from 'rxjs/operators';
 
 import { ConfigService } from '../../core/config.service';
@@ -38,7 +38,8 @@ import { makePhaseFromDescriptor, makeTest, RawTestState } from './station-data'
 interface StationApiResponse {
   test_uid?: string;     // Present on messages of type 'update'.
   state?: RawTestState;  // Present on messages of type 'update'.
-  type: 'update'|'record';
+  production?: boolean;  // Present on messages of type 'mode'.
+  type: 'update'|'record'|'mode';
 }
 
 /**
@@ -56,6 +57,10 @@ export class StationService extends Subscription {
   // next test of the same name starts on the station, so each fixture keeps
   // its result until it starts again. A transient test goes as soon as it
   // completes.
+  // Each station's Production/Test mode, from its 'mode' messages: absent for
+  // a station server that has no such mode.
+  private readonly productionByStation: {[stationHostPort: string]: boolean} =
+      {};
   private readonly testsByStation:
       {[stationHostPort: string]: {[testId: string]: TestState}} = {};
   private messagesSubscription = null;
@@ -79,6 +84,11 @@ export class StationService extends Subscription {
         mergeMap((message: SockJsMessage) => {
               const response = StationService.validateResponse(message.data);
               console.debug('StationService received response:', response);
+              if (response.type === 'mode') {
+                this.productionByStation[station.hostPort] =
+                    response.production !== false;
+                return EMPTY;
+              }
               const test = this.parseResponse(response, station);
               return this.applyPhaseDescriptors(test);
             })
@@ -101,6 +111,32 @@ export class StationService extends Subscription {
       const byName = (a.name || '').localeCompare(b.name || '');
       return byName || ((a.startTimeMillis || 0) - (b.startTimeMillis || 0));
     });
+  }
+
+  /**
+   * Whether runs that start on the station now count as production: true,
+   * false (test mode), or null when the station has no such mode.
+   */
+  isProduction(station: Station): boolean|null {
+    const production = this.productionByStation[station.hostPort];
+    return production === undefined ? null : production;
+  }
+
+  /**
+   * Switch the station between production and test mode. The station tells
+   * every GUI watching it, this one included.
+   */
+  setProduction(station: Station, production: boolean): Promise<void> {
+    const baseUrl = getStationBaseUrl(this.config.dashboardEnabled, station);
+    return firstValueFrom(this.http.post(`${baseUrl}/station/mode`, {production}))
+        .then(() => {
+          this.productionByStation[station.hostPort] = production;
+        })
+        .catch(error => {
+          this.flashMessage.error(
+              'Could not switch the station\'s mode: ' +
+              messageFromHttpClientErrorResponse(error));
+        });
   }
 
   /**

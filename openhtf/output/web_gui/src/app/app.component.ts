@@ -18,10 +18,11 @@
  * Root component of the app.
  */
 
-import { Component, ElementRef, ChangeDetectionStrategy } from '@angular/core';
+import { Component, ElementRef, ChangeDetectionStrategy, HostBinding } from '@angular/core';
 
 import { ConfigService } from './core/config.service';
 import { Station } from './shared/models/station.model';
+import { StationService } from './stations/station/station.service';
 
 @Component({
     selector: 'htf-app',
@@ -33,7 +34,9 @@ import { Station } from './shared/models/station.model';
 export class AppComponent {
   selectedStation: Station|null = null;
 
-  constructor(configService: ConfigService, ref: ElementRef) {
+  constructor(
+      configService: ConfigService, ref: ElementRef,
+      private stationService: StationService) {
     // We can't access the config as an Angular input property because it is on
     // the root element, so access it as an attribute instead.
     const configString = ref.nativeElement.getAttribute('config');
@@ -49,5 +52,28 @@ export class AppComponent {
     }
 
     configService.initialize(config);
+  }
+
+  /**
+   * The selected station's Production/Test mode: true, false, or null when
+   * no station is selected or it has no such mode (then no switch is shown).
+   */
+  get production(): boolean|null {
+    return this.selectedStation === null ?
+        null :
+        this.stationService.isProduction(this.selectedStation);
+  }
+
+  // In test mode the whole page takes another palette (app.component.scss and
+  // the `.htf-test-mode` rules in style/layout.scss).
+  @HostBinding('class.htf-test-mode')
+  get testMode(): boolean {
+    return this.production === false;
+  }
+
+  setProduction(production: boolean) {
+    if (this.selectedStation !== null && production !== this.production) {
+      this.stationService.setProduction(this.selectedStation, production);
+    }
   }
 }

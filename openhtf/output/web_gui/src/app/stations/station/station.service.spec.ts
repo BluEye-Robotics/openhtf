@@ -295,4 +295,57 @@ describe('station service', () => {
        expect(test.phases[1].status).toEqual(PhaseStatus.running);
        expect(test.phases[2].status).toEqual(PhaseStatus.waiting);
      }));
+
+  describe('station mode', () => {
+    beforeEach(() => {
+      stationService.subscribe(mockStation);
+      connectSuccessfully();
+    });
+
+    const startedResponse = (testId: string, production: boolean|undefined) => {
+      const response = createMockTestStateResponse(
+          testId, 'RUNNING', {test_name: testId, config: {production}});
+      response.state.test_record['start_time_millis'] = 1000;
+      return response;
+    };
+
+    it('should keep the station\'s mode from its mode messages', fakeAsync(() => {
+      expect(stationService.isProduction(mockStation)).toBeNull();
+      receiveMockMessage({type: 'mode', production: false});
+      tick();
+      expect(stationService.isProduction(mockStation)).toBe(false);
+      expect(stationService.getTests(mockStation).length).toBe(0);
+      receiveMockMessage({type: 'mode', production: true});
+      tick();
+      expect(stationService.isProduction(mockStation)).toBe(true);
+      expect(stationService.isProduction(mockStation2)).toBeNull();
+    }));
+
+    it('should mark a run started in test mode', fakeAsync(() => {
+      receiveMockMessage(startedResponse('debug-run', false));
+      receiveMockMessage(startedResponse('real-run', true));
+      receiveMockMessage(createMockTestStateResponse(
+          'waiting-run', 'WAITING_FOR_TEST_START',
+          {test_name: 'waiting-run', config: {production: false}}));
+      tick();
+      const byName = {};
+      for (const test of stationService.getTests(mockStation)) {
+        byName[test.name] = test.production;
+      }
+      expect(byName).toEqual(
+          {'debug-run': false, 'real-run': true, 'waiting-run': null});
+    }));
+
+    it('should post a switch to the station', fakeAsync(() => {
+      // tslint:disable-next-line:no-any extend the mock with post
+      const http = mockHttpService as any;
+      http.post = jasmine.createSpy('post').and.returnValue(of({production: false}));
+      stationService.setProduction(mockStation, false);
+      tick();
+      expect(http.post).toHaveBeenCalledWith(
+          `http://${mockStation.hostPort}/station/mode`, {production: false});
+      expect(stationService.isProduction(mockStation)).toBe(false);
+    }));
+  });
 });
+

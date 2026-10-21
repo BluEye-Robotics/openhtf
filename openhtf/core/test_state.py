@@ -69,6 +69,14 @@ CONF.declare(
     'station_id',
     'The name of this test station',
     default_value=socket.gethostname())
+# The station's mode: True for production runs, False for runs that test or
+# debug the station (the web GUI's Production/Test switch sets it through the
+# station server). A run takes the mode that holds when it starts, i.e. once
+# its DUT is entered, into metadata['config']['production'].
+CONF.declare(
+    'production',
+    'Whether runs that start now count as production',
+    default_value=True)
 
 
 class _Infer(enum.Enum):
@@ -456,10 +464,18 @@ class TestState(util.SubscribableStateMixin):
     return None
 
   def mark_test_started(self) -> None:
-    """Set the TestRecord's start_time_millis field."""
+    """Set the TestRecord's start_time_millis field.
+
+    The run also takes the station's mode now (CONF.production): config is
+    snapshotted when the test begins executing, which on a station is before
+    the operator enters the DUT, and the mode may change while it waits.
+    """
     # Blow up instead of blowing away a previously set start_time_millis.
     assert self.test_record.start_time_millis == 0
     self.test_record.start_time_millis = util.time_millis()
+    config = self.test_record.metadata.get('config')
+    if isinstance(config, dict):  # The record caches this same dict.
+      config['production'] = bool(CONF.production)
     self.notify_update()
 
   def set_status_running(self) -> None:
