@@ -27,3 +27,80 @@ h2 {
   font-size: $font-size-small;
   margin-left: 5px;
 }
+
+:host {
+  display: block;
+  min-height: 100vh;
+}
+
+// Test mode: hazard-striped top bar, warm page, the strip below the bar.
+:host(.htf-test-mode) {
+  background: $test-tint;
+
+  .htf-layout-nav-container {
+    background: repeating-linear-gradient(
+        -45deg, $test-amber 0 18px, $test-amber-light 18px 36px);
+    border-bottom-color: $test-ink;
+  }
+
+  h1,
+  h2 {
+    color: $test-ink;
+  }
+}
+
+.htf-mode-switch {
+  align-self: center;
+  border: 1px solid $border-grey;
+  border-radius: 4px;
+  display: inline-flex;
+  line-height: normal;
+  overflow: hidden;
+}
+
+.htf-mode-switch-option {
+  background: $background-white;
+  border: 0;
+  color: $text-grey;
+  cursor: pointer;
+  font-size: $font-size-small;
+  font-weight: bold;
+  letter-spacing: .05em;
+  padding: 7px 16px;
+  text-transform: uppercase;
+
+  & + & {
+    border-left: 1px solid $border-grey;
+  }
+
+  &.is-active {
+    background: $theme-dark-grey;
+    color: $text-white;
+  }
+
+  &--test.is-active {
+    background: $test-ink;
+    color: $test-amber;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $theme-blue;
+    outline-offset: -2px;
+  }
+}
+
+.htf-test-mode-strip {
+  background: $test-ink;
+  color: $test-amber-light;
+  font-size: $font-size-regular;
+  margin: -15px 0 15px;  // Under the bar, in place of its bottom margin.
+  padding: 9px 16px;
+  text-align: center;
+
+  strong {
+    color: $test-amber;
+    letter-spacing: .1em;
+    margin-right: 10px;
+  }
+}
+

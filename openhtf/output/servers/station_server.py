@@ -350,7 +350,9 @@ class StationPubSub(pub_sub.PubSub):
   The endpoint provides information about every test that is currently
   running with this StationServer. Two types of message are sent: 'update'
   and 'record', where 'record' indicates the final state of a test. Each
-  message names its test with 'test_uid'.
+  message names its test with 'test_uid'. A third, 'mode', carries the
+  station's Production/Test mode ({'type': 'mode', 'production': bool}): sent
+  when it changes and first to every new subscriber.
   """
   _lock = threading.Lock()  # Required by pub_sub.PubSub.
   subscribers = set()  # Required by pub_sub.PubSub.
@@ -387,6 +389,14 @@ class StationPubSub(pub_sub.PubSub):
     cls._last_execution_uid = test_state_dict['execution_uid']
 
   @classmethod
+  def publish_mode(cls):
+    super(StationPubSub, cls).publish(cls._mode_message())
+
+  @staticmethod
+  def _mode_message():
+    return {'type': 'mode', 'production': bool(CONF.production)}
+
+  @classmethod
   def _last_message_for(cls, test_state_dict):
     return {
         'state': test_state_dict,
@@ -402,12 +412,52 @@ class StationPubSub(pub_sub.PubSub):
     Args:
       info: Subscription info.
     """
+    self.send(self._mode_message())
     executing = {
         test_state.execution_uid for _, test_state in _get_executing_tests()
     }
     for execution_uid, message in list(self._last_messages.items()):
       if execution_uid in executing:
         self.send(message)
+
+
+def set_production(production):
+  """Set the station's mode (CONF.production) and tell every GUI.
+
+  Runs whose DUT is entered from now on take it; runs already started keep
+  the mode they started with.
+  """
+  CONF.load(production=bool(production))
+  _LOG.info(
+      'Station switched to %s mode: runs whose DUT is entered from now on %s',
+      'production' if production else 'TEST',
+      'count as production' if production else 'are not production')
+  StationPubSub.publish_mode()
+
+
+class StationModeHandler(web_gui_server.CorsRequestHandler):
+  """GET and POST /station/mode: the station's Production/Test mode.
+
+  The body and the answer are {"production": bool}. False marks the runs
+  that start from now on as testing the station rather than production
+  (metadata['config']['production']), e.g. to debug a unit and still upload
+  its records without counting them in the station's metrics.
+  """
+
+  def get(self):
+    self.write({'production': bool(CONF.production)})
+
+  def post(self):
+    try:
+      production = json.loads(self.request.body.decode('utf-8'))['production']
+    except (KeyError, TypeError, ValueError):
+      production = None
+    if not isinstance(production, bool):
+      self.write('Expected {"production": true|false}.')
+      self.set_status(400)
+      return
+    set_production(production)
+    self.write({'production': production})
 
 
 class BaseTestHandler(web_gui_server.CorsRequestHandler):
@@ -704,6 +754,7 @@ class StationServer(web_gui_server.WebGuiServer):
 
     # Set up the other endpoints.
     routes.extend((
+        (r'/station/mode', StationModeHandler),
         (r'/tests/(?P<test_uid>[\w\d:]+)/phases', PhasesHandler),
         (r'/tests/(?P<test_uid>[\w\d:]+)/plugs/(?P<plug_name>.+)',
          PlugsHandler),
@@ -727,6 +778,9 @@ class StationServer(web_gui_server.WebGuiServer):
       ))
 
     super(StationServer, self).__init__(routes, port, sockets=sockets)
+    # A station always starts in production; test mode is switched on from
+    # the GUI for as long as it is needed.
+    CONF.load(production=True)
     self.station_multicast = StationMulticast(port)
 
   def _get_config(self):

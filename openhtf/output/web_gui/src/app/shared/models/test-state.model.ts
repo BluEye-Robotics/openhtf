@@ -56,6 +56,10 @@ export class TestState {
   // which fixture to start next: its panel goes as soon as it completes, and
   // it is not added to the history.
   transient?: boolean;
+  // Whether the run counts as production: false for a run started while the
+  // station was in test mode, null (or absent) before it has started or for
+  // a station without the mode.
+  production?: boolean|null;
 
   // Using the class as the interface for its own constructor allows us to call
   // the constructor in named-argument style.

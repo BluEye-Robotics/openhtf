@@ -20,8 +20,37 @@ limitations under the License.
   <div class="htf-layout-nav">
     <h1>OpenHTF</h1>
     <h2>Hardware Testing Framework.</h2>
+    @if (production !== null) {
+      <div class="u-flex-grow"></div>
+      <div class="htf-mode-switch" role="group" aria-label="Station mode">
+        <button
+          type="button"
+          class="htf-mode-switch-option"
+          [class.is-active]="production"
+          [attr.aria-pressed]="production"
+          (click)="setProduction(true)">
+          Production
+        </button>
+        <button
+          type="button"
+          class="htf-mode-switch-option htf-mode-switch-option--test"
+          [class.is-active]="!production"
+          [attr.aria-pressed]="!production"
+          (click)="setProduction(false)">
+          Test
+        </button>
+      </div>
+    }
   </div>
 </div>
+
+@if (production === false) {
+  <div class="htf-test-mode-strip" role="status">
+    <strong>TEST MODE</strong>
+    Runs started now upload as non-production and stay out of the station's
+    metrics. Switch back to Production when you are done.
+  </div>
+}
 
 <div class="htf-layout-container">
   <htf-station-list

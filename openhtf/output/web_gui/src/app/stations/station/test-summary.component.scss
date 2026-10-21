@@ -46,3 +46,17 @@ htf-progress-bar {
     content: 'Current phase: ';
   }
 }
+
+// A run started while the station was in test mode.
+.htf-test-badge {
+  background: $test-ink;
+  border-radius: 3px;
+  color: $test-amber;
+  font-size: $font-size-very-small;
+  font-weight: bold;
+  letter-spacing: .1em;
+  line-height: 1;
+  margin-left: 8px;
+  padding: 4px 6px;
+}
+

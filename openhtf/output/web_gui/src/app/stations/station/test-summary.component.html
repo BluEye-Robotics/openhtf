@@ -18,6 +18,11 @@ limitations under the License.
   <div class="htf-layout-widget">
     <div class="htf-layout-widget-header">
       <div>Current test: {{ test.name }}</div>
+      @if (test.production === false) {
+        <div class="htf-test-badge" title="Started in test mode: not counted as production">
+          TEST
+        </div>
+      }
       @if (test.startTimeMillis) {
         <div>
           &nbsp;{{ test | elapsedTime:'(%s)' }}
